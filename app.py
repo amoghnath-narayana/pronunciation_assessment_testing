@@ -8,9 +8,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 import tempfile
-import time
-from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict
 import json
 
 # Load environment variables
@@ -31,7 +29,6 @@ You are an AI English pronunciation tutor designed for Indian students. Your pri
 ### 1. Content Focus
 **Practice content focuses on:**
 - Commonly mispronounced sounds by Indian English speakers
-- Words with: TH sounds, V/W distinction, R sounds, schwa sounds
 - Clear articulation and natural English rhythm
 - Building confidence through practice
 
@@ -57,8 +54,6 @@ You are an AI English pronunciation tutor designed for Indian students. Your pri
 ### 3. Common Indian English Pronunciation Challenges to Monitor
 
 **Consonant Issues:**
-- TH → T/D substitution (think → tink, this → dis)
-- V/W confusion (very → wery, west → vest)
 - Final consonant clusters reduction
 - R pronunciation (retroflex vs. approximant)
 
@@ -237,7 +232,7 @@ def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
         response = model.generate_content(
             [prompt, audio_file],
             generation_config=genai.GenerationConfig(
-                temperature=1.0,
+                temperature=0.6,
                 max_output_tokens=8192,
                 response_mime_type="text/plain"
             )
@@ -392,6 +387,7 @@ def main():
         # Add button to get new sentence
         if st.button(":material/refresh: Get New Sentence", use_container_width=True):
             st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
+            st.session_state.assessment_result = None  # Clear previous assessment
             st.rerun()
 
         st.markdown("---")
@@ -423,7 +419,7 @@ def main():
             st.info("Record yourself reading the practice sentence to receive detailed feedback on your pronunciation!")
 
             # Display tips
-            with st.expander("Recording Tips"):
+            with st.expander("Recording Tips", True):
                 st.markdown("""
                 1. **Find a quiet space** - Minimize background noise
                 2. **Speak clearly** - Don't rush through the sentence
@@ -434,7 +430,7 @@ def main():
                 """)
 
             # Display common pronunciation challenges
-            with st.expander("Common Pronunciation Challenges"):
+            with st.expander("Common Pronunciation Challenges", True):
                 st.markdown("""
                 - **TH sounds**: Practice 'th' in words like "think", "this", "weather"
                 - **V vs W**: Distinguish between 'v' and 'w' (very vs. where)
