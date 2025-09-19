@@ -286,6 +286,24 @@ def format_assessment_result(result: Dict) -> None:
         st.error("No assessment result available")
         return
 
+    # Display specific errors
+    if result.get("specific_errors") and len(result["specific_errors"]) > 0:
+        st.subheader(":material/search: Specific Words to Practice")
+        for error in result["specific_errors"]:
+            st.warning(f"**{error.get('word', 'Word')}**: {error.get('issue', '')} :material/arrow_forward: {error.get('suggestion', '')}")
+
+    # Display areas for improvement
+    if result.get("areas_for_improvement"):
+        st.subheader(":material/lightbulb: Areas to Work On")
+        for area in result["areas_for_improvement"]:
+            st.info(f"• {area}")
+
+    # Display strengths
+    if result.get("strengths"):
+        st.subheader(":material/star: What You Did Well")
+        for strength in result["strengths"]:
+            st.success(f"• {strength}")
+
     # Display overall scores
     st.subheader(":material/analytics: Assessment Results")
 
@@ -303,24 +321,6 @@ def format_assessment_result(result: Dict) -> None:
     with cols[2]:
         score = result["overall_scores"]["prosody"]
         st.info(f"**Rhythm & Tone**\n{score_icons[score]} {score}")
-
-    # Display strengths
-    if result.get("strengths"):
-        st.subheader(":material/star: What You Did Well")
-        for strength in result["strengths"]:
-            st.success(f"• {strength}")
-
-    # Display areas for improvement
-    if result.get("areas_for_improvement"):
-        st.subheader(":material/lightbulb: Areas to Work On")
-        for area in result["areas_for_improvement"]:
-            st.info(f"• {area}")
-
-    # Display specific errors
-    if result.get("specific_errors") and len(result["specific_errors"]) > 0:
-        st.subheader(":material/search: Specific Words to Practice")
-        for error in result["specific_errors"]:
-            st.warning(f"**{error.get('word', 'Word')}**: {error.get('issue', '')} :material/arrow_forward: {error.get('suggestion', '')}")
 
     # Display practice suggestions
     if result.get("practice_suggestions"):
