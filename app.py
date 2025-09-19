@@ -5,11 +5,13 @@ Using Gemini 2.5 Pro for K-12 Indian Students
 
 import streamlit as st
 import google.generativeai as genai
-from dotenv import load_dotenv
+
 import os
 import tempfile
-from typing import Dict
 import json
+
+from dotenv import load_dotenv
+from typing import Dict
 
 # Load environment variables
 load_dotenv()
@@ -348,7 +350,6 @@ def main():
 
     # App header
     st.title(":material/mic: English Pronunciation Assessment")
-    st.markdown("*Practice and improve your English pronunciation*")
     st.markdown("---")
 
     # Main content area
