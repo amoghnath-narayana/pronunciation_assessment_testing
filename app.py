@@ -154,7 +154,67 @@ PRACTICE_SENTENCES = [
     "She sells seashells by the seashore.",
     "Whether the weather is warm or cold.",
     "The quick brown fox jumps over the lazy dog.",
-    "Practice makes perfect with persistent effort."
+    "Practice makes perfect with persistent effort.",
+    "Mathematics challenges our problem-solving abilities.",
+    "Healthy eating habits contribute to overall wellness.",
+    "Regular exercise strengthens both body and mind.",
+    "Education opens doors to countless opportunities.",
+    "Patience and perseverance lead to achievement.",
+    "The library is filled with thousands of valuable books.",
+    "Volunteer work makes a positive difference in communities.",
+    "Through thorough thought, they solved the puzzle.",
+    "Vegetables provide vital vitamins for growth.",
+    "Whether the weather improves remains uncertain.",
+    "World literature expands our cultural horizons.",
+    "The rhythm of the music was absolutely mesmerizing.",
+    "Effective communication requires active listening.",
+    "Curiosity drives scientific discovery forward.",
+    "Traditional festivals preserve cultural heritage.",
+    "The photographer captured breathtaking mountain views.",
+    "Sustainable development protects future generations.",
+    "Creative thinking produces innovative solutions.",
+    "Historical monuments tell fascinating stories.",
+    "The theater performance received enthusiastic applause.",
+    "Collaboration strengthens team achievements.",
+    "Fresh vegetables from the garden taste wonderful.",
+    "The athlete demonstrated exceptional determination.",
+    "Musical instruments require regular maintenance.",
+    "The architecture of ancient temples is remarkable.",
+    "Discipline and dedication determine success.",
+    "The museum exhibition showcases contemporary art.",
+    "Technological advancement transforms daily life.",
+    "The chef prepared an extraordinary three-course meal.",
+    "Wildlife conservation protects endangered species.",
+    "The university library stays open throughout the week.",
+    "Public transportation reduces environmental pollution.",
+    "The comfortable weather makes walking pleasant.",
+    "International cooperation promotes global peace.",
+    "The enthusiastic teacher motivates all students.",
+    "Renewable energy sources benefit the environment.",
+    "The philosophical discussion was thought-provoking.",
+    "Artistic expression reflects cultural values.",
+    "The therapeutic benefits of meditation are proven.",
+    "Agricultural innovation increases crop production.",
+    "The thoughtful mother bought three things.",
+    "Vivid vocabulary varies with various voices.",
+    "The workshop will worthwhile for everyone.",
+    "Thirty-three thin thinkers thought thoroughly.",
+    "The village veterinarian vaccinated various animals.",
+    "Wealthy individuals invest wisely worldwide.",
+    "The author thoroughly researched the theory.",
+    "Breathe deeply through these breathing exercises.",
+    "The ruthless truth eventually emerged.",
+    "Feathers float effortlessly through the atmosphere.",
+    "We were wondering whether winter would arrive.",
+    "The mathematician methodically solved the theorem.",
+    "Enthusiastic volunteers distributed food throughout.",
+    "The therapist suggested breathing techniques.",
+    "Neither brother bothered with the other.",
+    "Smooth transitions strengthen the presentation.",
+    "The weather forecast predicts thunderstorms.",
+    "Worthwhile activities enrich our lives.",
+    "These thorough methods ensure success.",
+    "The theater's acoustics were absolutely perfect."
 ]
 
 
@@ -334,7 +394,20 @@ def format_assessment_result(result: Dict) -> None:
         if result.get("encouragement"):
             st.markdown(f"**:material/fitness_center: {result['encouragement']}**")
         if result.get("next_challenge"):
-            st.info(f"**Next Practice:** {result['next_challenge']}")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.info(f"**Next Practice:** {result['next_challenge']}")
+            with col2:
+                if st.button(":material/play_arrow: Practice This", key="practice_next"):
+                    # Set the next challenge as the new practice sentence
+                    st.session_state.practice_sentence = result['next_challenge']
+                    # Find if this sentence exists in our list and update index
+                    if result['next_challenge'] in PRACTICE_SENTENCES:
+                        st.session_state.sentence_index = PRACTICE_SENTENCES.index(result['next_challenge'])
+                    # Clear previous assessment and audio
+                    st.session_state.assessment_result = None
+                    st.session_state.audio_data = None
+                    st.rerun()
 
 
 def main():
