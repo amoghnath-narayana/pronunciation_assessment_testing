@@ -21,25 +21,19 @@ genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 # System prompt for pronunciation assessment
 SYSTEM_PROMPT = """
-English Pronunciation Assessment for K-12 Indian Students
+English Pronunciation Assessment for Indian Students
 
 ## Role & Context
-You are an AI English pronunciation tutor specifically designed for K-12 Indian students from Narayana Group schools. Your primary function is to assess and improve English pronunciation through reading exercises.
+You are an AI English pronunciation tutor designed for Indian students. Your primary function is to assess and improve English pronunciation through reading exercises.
 
 ## Core Responsibilities
 
-### 1. Content Suggestion
-**Suggest age-appropriate English content for reading practice:**
-- **Grades K-2:** Simple 3-7 word sentences, basic sight words, phonetic words
-- **Grades 3-5:** 8-15 word sentences, common vocabulary, simple stories
-- **Grades 6-8:** Complex sentences, academic vocabulary, short paragraphs
-- **Grades 9-12:** Advanced sentences, technical terms, literary excerpts
-
-**Content Guidelines:**
-- Focus on commonly mispronounced sounds by Indian English speakers
-- Include words with: TH sounds, V/W distinction, R sounds, schwa sounds
-- Culturally appropriate and educationally relevant content
-- Progressive difficulty based on grade level
+### 1. Content Focus
+**Practice content focuses on:**
+- Commonly mispronounced sounds by Indian English speakers
+- Words with: TH sounds, V/W distinction, R sounds, schwa sounds
+- Clear articulation and natural English rhythm
+- Building confidence through practice
 
 ### 2. Pronunciation Analysis Framework
 
@@ -83,24 +77,24 @@ You are an AI English pronunciation tutor specifically designed for K-12 Indian 
 **For Each Assessment, Provide:**
 
 1. **Overall Score Summary:**
-   - Phonetic Accuracy: Yes/No/NA
-   - Fluency: Yes/No/NA
-   - Prosody: Yes/No/NA
+    - Phonetic Accuracy: Yes/No/NA
+    - Fluency: Yes/No/NA
+    - Prosody: Yes/No/NA
 
 2. **Specific Feedback:**
-   - Correctly pronounced elements (positive reinforcement)
-   - Specific errors with examples
-   - Target sounds to practice
+    - Correctly pronounced elements (positive reinforcement)
+    - Specific errors with examples
+    - Target sounds to practice
 
 3. **Improvement Suggestions:**
-   - Specific drills for identified issues
-   - Mouth positioning guidance
-   - Practice words/sentences
+    - Specific drills for identified issues
+    - Mouth positioning guidance
+    - Practice words/sentences
 
 4. **Encouragement:**
-   - Grade-appropriate motivational feedback
-   - Progress acknowledgment
-   - Next steps guidance
+    - Grade-appropriate motivational feedback
+    - Progress acknowledgment
+    - Next steps guidance
 
 ### 5. Scoring Guidelines
 
@@ -115,18 +109,18 @@ You are an AI English pronunciation tutor specifically designed for K-12 Indian 
 - Use familiar cultural references when providing examples
 - Avoid negative comparisons with native speaker models
 
-### 7. Sample Interaction Flow
+### 7. Interaction Flow
 
-1. **Greeting & Level Assessment:** "Hi! I'm here to help improve your English pronunciation. What grade are you in?"
+1. **Introduction:** "Hi! I'm here to help improve your English pronunciation."
 
-2. **Content Suggestion:** "Let's practice with this sentence: [age-appropriate content]"
+2. **Practice:** "Let's practice with this sentence: [practice content]"
 
-3. **Post-Recording Analysis:**
-   - Listen to student's recording
-   - Analyze against parameters
-   - Provide structured feedback
+3. **Analysis:**
+    - Listen to student's recording
+    - Analyze pronunciation accuracy
+    - Provide structured feedback
 
-4. **Follow-up Practice:** Suggest targeted exercises based on identified areas
+4. **Follow-up:** Suggest targeted exercises based on identified areas
 
 ## Example Assessment Template
 
@@ -147,37 +141,24 @@ You are an AI English pronunciation tutor specifically designed for K-12 Indian 
 Remember: Your goal is to build confidence while improving accuracy. Every student's journey is unique, and progress should be celebrated at every step.
 """
 
-# Sample sentences by grade level
-PRACTICE_SENTENCES = {
-    "K-2": [
-        "The cat is very happy.",
-        "I want three red apples.",
-        "This is my new book.",
-        "We go to school together.",
-        "Thank you for the help."
-    ],
-    "3-5": [
-        "The weather is beautiful today with clear blue skies.",
-        "My favorite subject is mathematics because it's very interesting.",
-        "We should always think before we speak.",
-        "The village festival brings everyone together.",
-        "I practice writing every evening after dinner."
-    ],
-    "6-8": [
-        "The scientific method involves observation, hypothesis, experimentation, and conclusion.",
-        "Cultural diversity enriches our understanding of the world around us.",
-        "Technology has revolutionized the way we communicate with each other.",
-        "Environmental conservation is everyone's responsibility in the modern world.",
-        "Critical thinking skills are essential for academic success."
-    ],
-    "9-12": [
-        "The intersection of artificial intelligence and ethics presents unprecedented challenges for modern society.",
-        "Analyzing literary themes requires careful attention to authorial intent and contextual nuances.",
-        "Sustainable development goals necessitate collaborative efforts across governmental and private sectors.",
-        "The synthesis of theoretical knowledge and practical application defines true expertise.",
-        "Contemporary global economics demonstrates the interconnectedness of international markets."
-    ]
-}
+# Practice sentences for pronunciation
+PRACTICE_SENTENCES = [
+    "The weather is beautiful today with clear blue skies.",
+    "Thank you very much for your thoughtful assistance.",
+    "We should always think before we speak.",
+    "Technology has revolutionized the way we communicate.",
+    "This village festival brings everyone together.",
+    "I practice writing every evening after dinner.",
+    "The scientific method involves careful observation.",
+    "Cultural diversity enriches our understanding.",
+    "Environmental conservation is everyone's responsibility.",
+    "Critical thinking skills are essential for success.",
+    "The three brothers went through the thick forest.",
+    "She sells seashells by the seashore.",
+    "Whether the weather is warm or cold.",
+    "The quick brown fox jumps over the lazy dog.",
+    "Practice makes perfect with persistent effort."
+]
 
 
 def initialize_session_state():
@@ -186,21 +167,18 @@ def initialize_session_state():
         st.session_state.audio_data = None
     if 'assessment_result' not in st.session_state:
         st.session_state.assessment_result = None
-    if 'selected_grade' not in st.session_state:
-        st.session_state.selected_grade = "3-5"
     if 'practice_sentence' not in st.session_state:
         st.session_state.practice_sentence = ""
     if 'recording_status' not in st.session_state:
         st.session_state.recording_status = "ready"
 
 
-def get_practice_sentence(grade_level: str, index: int = 0) -> str:
-    """Get a practice sentence for the selected grade level"""
-    sentences = PRACTICE_SENTENCES.get(grade_level, PRACTICE_SENTENCES["3-5"])
-    return sentences[index % len(sentences)]
+def get_practice_sentence(index: int = 0) -> str:
+    """Get a practice sentence"""
+    return PRACTICE_SENTENCES[index % len(PRACTICE_SENTENCES)]
 
 
-def assess_pronunciation(audio_data: bytes, expected_text: str, grade_level: str) -> Dict:
+def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
     """
     Send audio to Gemini API for pronunciation assessment
     """
@@ -221,7 +199,6 @@ def assess_pronunciation(audio_data: bytes, expected_text: str, grade_level: str
 
         # Create the prompt
         prompt = f"""
-        Grade Level: {grade_level}
         Expected Text: "{expected_text}"
 
         Please analyze the student's pronunciation of the above text from the audio recording.
@@ -298,75 +275,55 @@ def format_assessment_result(result: Dict) -> None:
         st.error("No assessment result available")
         return
 
-    # Display overall scores with color coding
-    st.subheader("Overall Assessment")
+    # Display overall scores
+    st.subheader("📊 Assessment Results")
 
     cols = st.columns(3)
-    score_emojis = {"Yes": "[PASS]", "No": "[FAIL]", "NA": "[N/A]"}
-    score_colors = {"Yes": "green", "No": "red", "NA": "gray"}
+    score_icons = {"Yes": "✅", "No": "❌", "NA": "⚠️"}
 
     with cols[0]:
         score = result["overall_scores"]["phonetic_accuracy"]
-        st.metric(
-            "Phonetic Accuracy",
-            f"{score_emojis[score]} {score}",
-        )
-        if result["detailed_feedback"]["phonetic_accuracy_details"]:
-            st.caption(result["detailed_feedback"]["phonetic_accuracy_details"])
+        st.info(f"**Pronunciation**\n{score_icons[score]} {score}")
 
     with cols[1]:
         score = result["overall_scores"]["fluency"]
-        st.metric(
-            "Fluency",
-            f"{score_emojis[score]} {score}",
-        )
-        if result["detailed_feedback"]["fluency_details"]:
-            st.caption(result["detailed_feedback"]["fluency_details"])
+        st.info(f"**Fluency**\n{score_icons[score]} {score}")
 
     with cols[2]:
         score = result["overall_scores"]["prosody"]
-        st.metric(
-            "Prosody",
-            f"{score_emojis[score]} {score}",
-        )
-        if result["detailed_feedback"]["prosody_details"]:
-            st.caption(result["detailed_feedback"]["prosody_details"])
+        st.info(f"**Rhythm & Tone**\n{score_icons[score]} {score}")
 
     # Display strengths
     if result.get("strengths"):
-        st.subheader("Strengths")
+        st.subheader("✨ What You Did Well")
         for strength in result["strengths"]:
-            st.success(f"- {strength}")
+            st.success(f"• {strength}")
 
     # Display areas for improvement
     if result.get("areas_for_improvement"):
-        st.subheader("Areas for Improvement")
+        st.subheader("💡 Areas to Work On")
         for area in result["areas_for_improvement"]:
-            st.info(f"- {area}")
+            st.info(f"• {area}")
 
     # Display specific errors
     if result.get("specific_errors") and len(result["specific_errors"]) > 0:
-        st.subheader("Specific Corrections")
+        st.subheader("🔍 Specific Words to Practice")
         for error in result["specific_errors"]:
-            with st.expander(f"Word: {error.get('word', 'N/A')}"):
-                st.write(f"**Issue:** {error.get('issue', 'N/A')}")
-                st.write(f"**Suggestion:** {error.get('suggestion', 'N/A')}")
+            st.warning(f"**{error.get('word', 'Word')}**: {error.get('issue', '')} → {error.get('suggestion', '')}")
 
     # Display practice suggestions
     if result.get("practice_suggestions"):
-        st.subheader("Practice Suggestions")
-        for i, suggestion in enumerate(result["practice_suggestions"], 1):
-            st.write(f"{i}. {suggestion}")
+        st.subheader("📝 Practice Tips")
+        for suggestion in result["practice_suggestions"]:
+            st.write(f"• {suggestion}")
 
-    # Display encouragement
-    if result.get("encouragement"):
-        st.subheader("Keep Going!")
-        st.markdown(f"*{result['encouragement']}*")
-
-    # Display next challenge
-    if result.get("next_challenge"):
-        st.subheader("Next Challenge")
-        st.info(result["next_challenge"])
+    # Display encouragement and next steps
+    if result.get("encouragement") or result.get("next_challenge"):
+        st.markdown("---")
+        if result.get("encouragement"):
+            st.markdown(f"**💪 {result['encouragement']}**")
+        if result.get("next_challenge"):
+            st.info(f"**Next Practice:** {result['next_challenge']}")
 
 
 def main():
@@ -381,38 +338,32 @@ def main():
     initialize_session_state()
 
     # App header
-    st.title("English Pronunciation Assessment")
-    st.markdown("*Designed for K-12 Indian Students*")
+    st.title("🎙️ English Pronunciation Assessment")
+    st.markdown("*Practice and improve your English pronunciation*")
     st.markdown("---")
 
     # Sidebar for settings
     with st.sidebar:
         st.header("Settings")
 
-        # Grade selection
-        st.session_state.selected_grade = st.selectbox(
-            "Select Grade Level",
-            options=["K-2", "3-5", "6-8", "9-12"],
-            index=1
-        )
-
         # Sentence selection
         st.subheader("Practice Sentences")
         sentence_index = st.number_input(
-            "Sentence Number",
+            "Select Sentence",
             min_value=1,
-            max_value=5,
-            value=1
+            max_value=len(PRACTICE_SENTENCES),
+            value=1,
+            help=f"Choose from {len(PRACTICE_SENTENCES)} available sentences"
         ) - 1
 
         # About section
         st.markdown("---")
         st.subheader("About")
         st.markdown("""
-        This app helps Indian K-12 students improve their English pronunciation through:
-        - Grade-appropriate practice sentences
+        This app helps improve English pronunciation through:
+        - Practice sentences with common challenges
         - AI-powered pronunciation assessment
-        - Detailed feedback on phonetics, fluency, and prosody
+        - Detailed feedback on accuracy and fluency
         - Personalized improvement suggestions
         """)
 
@@ -423,10 +374,7 @@ def main():
         st.subheader("Practice Sentence")
 
         # Get and display practice sentence
-        st.session_state.practice_sentence = get_practice_sentence(
-            st.session_state.selected_grade,
-            sentence_index
-        )
+        st.session_state.practice_sentence = get_practice_sentence(sentence_index)
 
         # Display the sentence in a nice box
         st.markdown(
@@ -462,30 +410,7 @@ def main():
                 with st.spinner("Analyzing your pronunciation..."):
                     result = assess_pronunciation(
                         st.session_state.audio_data,
-                        st.session_state.practice_sentence,
-                        st.session_state.selected_grade
-                    )
-                    st.session_state.assessment_result = result
-
-        # Alternative: File uploader
-        st.markdown("---")
-        st.markdown("**Alternative: Upload an audio file**")
-        uploaded_file = st.file_uploader(
-            "Choose audio file",
-            type=['wav', 'mp3', 'ogg', 'm4a'],
-            help="Upload a recording of you reading the sentence above"
-        )
-
-        if uploaded_file is not None:
-            upload_data = uploaded_file.read()
-            st.audio(upload_data, format='audio/wav')
-
-            if st.button("Assess Uploaded Audio", type="secondary", use_container_width=True):
-                with st.spinner("Analyzing your pronunciation..."):
-                    result = assess_pronunciation(
-                        upload_data,
-                        st.session_state.practice_sentence,
-                        st.session_state.selected_grade
+                        st.session_state.practice_sentence
                     )
                     st.session_state.assessment_result = result
 
@@ -508,44 +433,15 @@ def main():
                 6. **Relax** - Take a breath before starting
                 """)
 
-            # Display common challenges based on grade
-            with st.expander("Common Challenges for Your Grade"):
-                challenges = {
-                    "K-2": [
-                        "Focus on clear 'th' sounds (this, that, three)",
-                        "Distinguish between 'v' and 'w' sounds",
-                        "Practice ending consonants clearly"
-                    ],
-                    "3-5": [
-                        "Work on word stress patterns",
-                        "Practice linking words smoothly",
-                        "Focus on vowel sounds in unstressed syllables"
-                    ],
-                    "6-8": [
-                        "Master complex consonant clusters",
-                        "Practice sentence stress and rhythm",
-                        "Work on appropriate intonation patterns"
-                    ],
-                    "9-12": [
-                        "Refine prosodic features for academic speaking",
-                        "Practice technical vocabulary pronunciation",
-                        "Focus on natural speech rhythm and flow"
-                    ]
-                }
-
-                for challenge in challenges.get(st.session_state.selected_grade, []):
-                    st.write(f"- {challenge}")
-
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style="text-align: center; color: #666;">
-            Made for Narayana Group Students | Powered by Gemini AI
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            # Display common pronunciation challenges
+            with st.expander("Common Pronunciation Challenges"):
+                st.markdown("""
+                - **TH sounds**: Practice 'th' in words like "think", "this", "weather"
+                - **V vs W**: Distinguish between 'v' and 'w' (very vs. where)
+                - **Word stress**: Emphasize the right syllable in multi-syllable words
+                - **Linking**: Connect words smoothly in sentences
+                - **Rhythm**: Maintain natural English stress-timed rhythm
+                """)
 
 
 if __name__ == "__main__":
