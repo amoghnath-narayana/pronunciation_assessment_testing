@@ -389,6 +389,7 @@ def main():
         if st.button(":material/refresh: Get New Sentence", use_container_width=True):
             st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
             st.session_state.assessment_result = None  # Clear previous assessment
+            st.session_state.audio_data = None  # Clear previous recording
             st.rerun()
 
         st.markdown("---")
@@ -397,7 +398,7 @@ def main():
         st.subheader("Record Your Pronunciation")
 
         # Audio input widget (microphone recording)
-        audio_value = st.audio_input("Click to record")
+        audio_value = st.audio_input("Click to record", key=f"audio_input_{st.session_state.sentence_index}")
 
         if audio_value is not None:
             st.session_state.audio_data = audio_value.read()
