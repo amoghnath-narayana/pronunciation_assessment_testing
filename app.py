@@ -9,6 +9,7 @@ import google.generativeai as genai
 import os
 import tempfile
 import json
+import hashlib
 
 from dotenv import load_dotenv
 from typing import Dict
@@ -228,6 +229,8 @@ def initialize_session_state():
         st.session_state.practice_sentence = ""
     if 'recording_status' not in st.session_state:
         st.session_state.recording_status = "ready"
+    if 'custom_sentence' not in st.session_state:
+        st.session_state.custom_sentence = None
 
 
 def get_practice_sentence(index: int = 0) -> str:
@@ -399,11 +402,8 @@ def format_assessment_result(result: Dict) -> None:
                 st.info(f"**Next Practice:** {result['next_challenge']}")
             with col2:
                 if st.button(":material/play_arrow: Practice This", key="practice_next"):
-                    # Set the next challenge as the new practice sentence
-                    st.session_state.practice_sentence = result['next_challenge']
-                    # Find if this sentence exists in our list and update index
-                    if result['next_challenge'] in PRACTICE_SENTENCES:
-                        st.session_state.sentence_index = PRACTICE_SENTENCES.index(result['next_challenge'])
+                    # Store the next challenge sentence
+                    st.session_state.custom_sentence = result['next_challenge']
                     # Clear previous assessment and audio
                     st.session_state.assessment_result = None
                     st.session_state.audio_data = None
@@ -428,8 +428,7 @@ def main():
     # Main content area
     col1, col2 = st.columns([1, 1])
 
-    # Get random sentence index (or cycle through them)
-    import random
+    # Get sentence index (cycle through them)
     if 'sentence_index' not in st.session_state:
         st.session_state.sentence_index = 0
     sentence_index = st.session_state.sentence_index
@@ -438,7 +437,11 @@ def main():
         st.subheader("Practice Sentence")
 
         # Get and display practice sentence
-        st.session_state.practice_sentence = get_practice_sentence(sentence_index)
+        # Use custom sentence if available (from "Practice This" button), otherwise use list
+        if st.session_state.custom_sentence:
+            st.session_state.practice_sentence = st.session_state.custom_sentence
+        else:
+            st.session_state.practice_sentence = get_practice_sentence(sentence_index)
 
         # Display the sentence in a simple, clean box
         st.markdown(
@@ -463,6 +466,7 @@ def main():
             st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
             st.session_state.assessment_result = None  # Clear previous assessment
             st.session_state.audio_data = None  # Clear previous recording
+            st.session_state.custom_sentence = None  # Clear custom sentence to use list
             st.rerun()
 
         st.markdown("---")
@@ -471,7 +475,9 @@ def main():
         st.subheader("Record Your Pronunciation")
 
         # Audio input widget (microphone recording)
-        audio_value = st.audio_input("Click to record", key=f"audio_input_{st.session_state.sentence_index}")
+        # Use hash of the sentence for unique key to ensure recorder resets when sentence changes
+        sentence_hash = hashlib.md5(st.session_state.practice_sentence.encode()).hexdigest()[:8]
+        audio_value = st.audio_input("Click to record", key=f"audio_input_{sentence_hash}")
 
         if audio_value is not None:
             st.session_state.audio_data = audio_value.read()
