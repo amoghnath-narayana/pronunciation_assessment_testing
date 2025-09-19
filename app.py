@@ -184,9 +184,16 @@ def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
     """
     try:
         # Initialize the Gemini model (using latest version)
+        generation_config = genai.GenerationConfig(
+            temperature=1.0,
+            max_output_tokens=8192,
+            response_mime_type="text/plain"
+        )
+
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
-            system_instruction=SYSTEM_PROMPT
+            model_name="gemini-2.5-pro",
+            system_instruction=SYSTEM_PROMPT,
+            generation_config=generation_config
         )
 
         # Create a temporary file for the audio
@@ -226,8 +233,15 @@ def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
         }}
         """
 
-        # Generate response
-        response = model.generate_content([prompt, audio_file])
+        # Generate response with thinking enabled
+        response = model.generate_content(
+            [prompt, audio_file],
+            generation_config=genai.GenerationConfig(
+                temperature=1.0,
+                max_output_tokens=8192,
+                response_mime_type="text/plain"
+            )
+        )
 
         # Clean up temporary file
         os.unlink(tmp_file_path)
@@ -276,10 +290,10 @@ def format_assessment_result(result: Dict) -> None:
         return
 
     # Display overall scores
-    st.subheader("📊 Assessment Results")
+    st.subheader(":material/analytics: Assessment Results")
 
     cols = st.columns(3)
-    score_icons = {"Yes": "✅", "No": "❌", "NA": "⚠️"}
+    score_icons = {"Yes": ":material/check_circle:", "No": ":material/cancel:", "NA": ":material/warning:"}
 
     with cols[0]:
         score = result["overall_scores"]["phonetic_accuracy"]
@@ -295,25 +309,25 @@ def format_assessment_result(result: Dict) -> None:
 
     # Display strengths
     if result.get("strengths"):
-        st.subheader("✨ What You Did Well")
+        st.subheader(":material/star: What You Did Well")
         for strength in result["strengths"]:
             st.success(f"• {strength}")
 
     # Display areas for improvement
     if result.get("areas_for_improvement"):
-        st.subheader("💡 Areas to Work On")
+        st.subheader(":material/lightbulb: Areas to Work On")
         for area in result["areas_for_improvement"]:
             st.info(f"• {area}")
 
     # Display specific errors
     if result.get("specific_errors") and len(result["specific_errors"]) > 0:
-        st.subheader("🔍 Specific Words to Practice")
+        st.subheader(":material/search: Specific Words to Practice")
         for error in result["specific_errors"]:
-            st.warning(f"**{error.get('word', 'Word')}**: {error.get('issue', '')} → {error.get('suggestion', '')}")
+            st.warning(f"**{error.get('word', 'Word')}**: {error.get('issue', '')} :material/arrow_forward: {error.get('suggestion', '')}")
 
     # Display practice suggestions
     if result.get("practice_suggestions"):
-        st.subheader("📝 Practice Tips")
+        st.subheader(":material/edit_note: Practice Tips")
         for suggestion in result["practice_suggestions"]:
             st.write(f"• {suggestion}")
 
@@ -321,7 +335,7 @@ def format_assessment_result(result: Dict) -> None:
     if result.get("encouragement") or result.get("next_challenge"):
         st.markdown("---")
         if result.get("encouragement"):
-            st.markdown(f"**💪 {result['encouragement']}**")
+            st.markdown(f"**:material/fitness_center: {result['encouragement']}**")
         if result.get("next_challenge"):
             st.info(f"**Next Practice:** {result['next_challenge']}")
 
@@ -330,7 +344,7 @@ def main():
     """Main application function"""
     st.set_page_config(
         page_title="Pronunciation Assessment",
-        page_icon="",
+        page_icon=":material/mic:",
         layout="wide"
     )
 
@@ -338,37 +352,18 @@ def main():
     initialize_session_state()
 
     # App header
-    st.title("🎙️ English Pronunciation Assessment")
+    st.title(":material/mic: English Pronunciation Assessment")
     st.markdown("*Practice and improve your English pronunciation*")
     st.markdown("---")
 
-    # Sidebar for settings
-    with st.sidebar:
-        st.header("Settings")
-
-        # Sentence selection
-        st.subheader("Practice Sentences")
-        sentence_index = st.number_input(
-            "Select Sentence",
-            min_value=1,
-            max_value=len(PRACTICE_SENTENCES),
-            value=1,
-            help=f"Choose from {len(PRACTICE_SENTENCES)} available sentences"
-        ) - 1
-
-        # About section
-        st.markdown("---")
-        st.subheader("About")
-        st.markdown("""
-        This app helps improve English pronunciation through:
-        - Practice sentences with common challenges
-        - AI-powered pronunciation assessment
-        - Detailed feedback on accuracy and fluency
-        - Personalized improvement suggestions
-        """)
-
     # Main content area
     col1, col2 = st.columns([1, 1])
+
+    # Get random sentence index (or cycle through them)
+    import random
+    if 'sentence_index' not in st.session_state:
+        st.session_state.sentence_index = 0
+    sentence_index = st.session_state.sentence_index
 
     with col1:
         st.subheader("Practice Sentence")
@@ -376,23 +371,28 @@ def main():
         # Get and display practice sentence
         st.session_state.practice_sentence = get_practice_sentence(sentence_index)
 
-        # Display the sentence in a nice box
+        # Display the sentence in a simple, clean box
         st.markdown(
             f"""
             <div style="
-                background-color: #f0f2f6;
-                border-radius: 10px;
-                padding: 20px;
-                margin: 10px 0;
-                border: 2px solid #4CAF50;
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                padding: 24px;
+                margin: 16px 0;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             ">
-                <h3 style="text-align: center; color: #333;">
+                <h3 style="text-align: center; color: #1f1f1f; font-size: 1.3em; line-height: 1.6; margin: 0;">
                     {st.session_state.practice_sentence}
                 </h3>
             </div>
             """,
             unsafe_allow_html=True
         )
+
+        # Add button to get new sentence
+        if st.button(":material/refresh: Get New Sentence", use_container_width=True):
+            st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
+            st.rerun()
 
         st.markdown("---")
 
