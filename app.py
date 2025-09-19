@@ -9,7 +9,6 @@ import google.generativeai as genai
 import os
 import tempfile
 import json
-import hashlib
 
 from dotenv import load_dotenv
 from typing import Dict
@@ -227,10 +226,8 @@ def initialize_session_state():
         st.session_state.assessment_result = None
     if 'practice_sentence' not in st.session_state:
         st.session_state.practice_sentence = ""
-    if 'recording_status' not in st.session_state:
-        st.session_state.recording_status = "ready"
-    if 'custom_sentence' not in st.session_state:
-        st.session_state.custom_sentence = None
+    if 'sentence_index' not in st.session_state:
+        st.session_state.sentence_index = 0
 
 
 def get_practice_sentence(index: int = 0) -> str:
@@ -289,7 +286,7 @@ def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
             ],
             "practice_suggestions": ["suggestion1", "suggestion2"],
             "encouragement": "Motivational message",
-            "next_challenge": "Suggested next practice sentence"
+            "next_challenge_level": "Difficulty level suggestion"
         }}
         """
 
@@ -333,7 +330,7 @@ def assess_pronunciation(audio_data: bytes, expected_text: str) -> Dict:
                 "specific_errors": [],
                 "practice_suggestions": ["Please try recording again"],
                 "encouragement": "Keep practicing!",
-                "next_challenge": expected_text
+                "next_challenge_level": "Try the same sentence again"
             }
 
         return result
@@ -392,22 +389,24 @@ def format_assessment_result(result: Dict) -> None:
             st.write(f"• {suggestion}")
 
     # Display encouragement and next steps
-    if result.get("encouragement") or result.get("next_challenge"):
+    if result.get("encouragement"):
         st.markdown("---")
-        if result.get("encouragement"):
-            st.markdown(f"**:material/fitness_center: {result['encouragement']}**")
-        if result.get("next_challenge"):
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.info(f"**Next Practice:** {result['next_challenge']}")
-            with col2:
-                if st.button(":material/play_arrow: Practice This", key="practice_next"):
-                    # Store the next challenge sentence
-                    st.session_state.custom_sentence = result['next_challenge']
-                    # Clear previous assessment and audio
-                    st.session_state.assessment_result = None
-                    st.session_state.audio_data = None
-                    st.rerun()
+        st.markdown(f"**:material/fitness_center: {result['encouragement']}**")
+
+        # Show next practice button
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            # Get next sentence from the list
+            next_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
+            next_sentence = PRACTICE_SENTENCES[next_index]
+            st.info(f"**Next Practice:** {next_sentence}")
+        with col2:
+            if st.button(":material/play_arrow: Practice This", key="practice_next"):
+                # Move to next sentence in the list
+                st.session_state.sentence_index = next_index
+                st.session_state.assessment_result = None
+                st.session_state.audio_data = None
+                st.rerun()
 
 
 def main():
@@ -428,20 +427,11 @@ def main():
     # Main content area
     col1, col2 = st.columns([1, 1])
 
-    # Get sentence index (cycle through them)
-    if 'sentence_index' not in st.session_state:
-        st.session_state.sentence_index = 0
-    sentence_index = st.session_state.sentence_index
-
     with col1:
         st.subheader("Practice Sentence")
 
-        # Get and display practice sentence
-        # Use custom sentence if available (from "Practice This" button), otherwise use list
-        if st.session_state.custom_sentence:
-            st.session_state.practice_sentence = st.session_state.custom_sentence
-        else:
-            st.session_state.practice_sentence = get_practice_sentence(sentence_index)
+        # Get practice sentence from the list using current index
+        st.session_state.practice_sentence = PRACTICE_SENTENCES[st.session_state.sentence_index]
 
         # Display the sentence in a simple, clean box
         st.markdown(
@@ -464,9 +454,8 @@ def main():
         # Add button to get new sentence
         if st.button(":material/refresh: Get New Sentence", use_container_width=True):
             st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
-            st.session_state.assessment_result = None  # Clear previous assessment
-            st.session_state.audio_data = None  # Clear previous recording
-            st.session_state.custom_sentence = None  # Clear custom sentence to use list
+            st.session_state.assessment_result = None
+            st.session_state.audio_data = None
             st.rerun()
 
         st.markdown("---")
@@ -475,9 +464,8 @@ def main():
         st.subheader("Record Your Pronunciation")
 
         # Audio input widget (microphone recording)
-        # Use hash of the sentence for unique key to ensure recorder resets when sentence changes
-        sentence_hash = hashlib.md5(st.session_state.practice_sentence.encode()).hexdigest()[:8]
-        audio_value = st.audio_input("Click to record", key=f"audio_input_{sentence_hash}")
+        # Use sentence index for unique key to ensure recorder resets when sentence changes
+        audio_value = st.audio_input("Click to record", key=f"audio_input_{st.session_state.sentence_index}")
 
         if audio_value is not None:
             st.session_state.audio_data = audio_value.read()
