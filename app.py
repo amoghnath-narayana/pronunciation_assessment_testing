@@ -276,6 +276,13 @@ def main() -> None:
             recorded_audio_bytes = recorded_audio_value.read()
             st.session_state.audio_data = recorded_audio_bytes
             st.session_state.assessment_result = None
+        elif (
+            st.session_state.audio_data is not None
+            and st.session_state.get(audio_input_key) is None
+        ):
+            # Clear stored audio when the recorder value is removed by the user
+            st.session_state.audio_data = None
+            st.session_state.assessment_result = None
 
         if st.session_state.audio_data:
             st.audio(st.session_state.audio_data, format=APP_CONFIG.recorded_audio_mime_type)
@@ -305,10 +312,7 @@ def main() -> None:
 
         if assessment_result:
             format_assessment_result(assessment_result)
-            next_challenge_level = assessment_result.get("next_challenge_level")
 
-            if next_challenge_level:
-                st.info(f"Next challenge: {next_challenge_level}")
         else:
             if st.session_state.audio_data:
                 st.info("Tap Assess Pronunciation to see feedback here.")
