@@ -1,6 +1,7 @@
 """Friendly pronunciation assessment for K1 and K2 learners."""
 
 import streamlit as st
+import streamlit.components.v1 as components
 import google.generativeai as genai
 import os
 import tempfile
@@ -120,7 +121,8 @@ def initialize_session_state() -> None:
         "audio_data": None,
         "assessment_result": None,
         "practice_sentence": "",
-        "sentence_index": 0
+        "sentence_index": 0,
+        "trigger_scroll_to_assessment": False,
     }
 
     for key, value in defaults.items():
@@ -258,6 +260,7 @@ def main() -> None:
                 st.session_state.sentence_index = (st.session_state.sentence_index + 1) % len(PRACTICE_SENTENCES)
                 st.session_state.assessment_result = None
                 st.session_state.audio_data = None
+                st.session_state.trigger_scroll_to_assessment = False
                 st.rerun()
 
         # Get practice sentence from the list using current index
@@ -276,6 +279,7 @@ def main() -> None:
             recorded_audio_bytes = recorded_audio_value.read()
             st.session_state.audio_data = recorded_audio_bytes
             st.session_state.assessment_result = None
+            st.session_state.trigger_scroll_to_assessment = False
         elif (
             st.session_state.audio_data is not None
             and st.session_state.get(audio_input_key) is None
@@ -283,6 +287,7 @@ def main() -> None:
             # Clear stored audio when the recorder value is removed by the user
             st.session_state.audio_data = None
             st.session_state.assessment_result = None
+            st.session_state.trigger_scroll_to_assessment = False
 
         if st.session_state.audio_data:
             st.audio(st.session_state.audio_data, format=APP_CONFIG.recorded_audio_mime_type)
@@ -303,15 +308,37 @@ def main() -> None:
                     st.session_state.practice_sentence,
                 )
                 st.session_state.assessment_result = pronunciation_assessment_result
+                st.session_state.trigger_scroll_to_assessment = bool(pronunciation_assessment_result)
 
     with assessment_section_container:
         st.divider()
+        st.markdown('<div id="assessment-anchor"></div>', unsafe_allow_html=True)
         st.subheader("Assessment")
 
         assessment_result = st.session_state.assessment_result
 
         if assessment_result:
             format_assessment_result(assessment_result)
+
+            if st.session_state.get("trigger_scroll_to_assessment"):
+                components.html(
+                    """
+                    <script>
+                    setTimeout(() => {
+                        const parentWindow = window.parent;
+                        if (!parentWindow) {
+                            return;
+                        }
+                        const anchor = parentWindow.document.getElementById('assessment-anchor');
+                        if (anchor && anchor.scrollIntoView) {
+                            anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 100);
+                    </script>
+                    """,
+                    height=0,
+                )
+                st.session_state.trigger_scroll_to_assessment = False
 
         else:
             if st.session_state.audio_data:
