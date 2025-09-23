@@ -211,11 +211,6 @@ def format_assessment_result(assessment_result_data: Dict) -> None:
     if not assessment_result_data:
         st.error("No assessment result available")
         return
-    
-    improvement_areas = assessment_result_data.get("areas_for_improvement", [])
-    if improvement_areas:
-        st.subheader("Try These Next")
-        display_list_items_with_bullets(improvement_areas, StreamlitMessageStyle.INFO)
 
     specific_word_errors = assessment_result_data.get("specific_errors", [])
     if specific_word_errors:
@@ -225,6 +220,11 @@ def format_assessment_result(assessment_result_data: Dict) -> None:
             error_issue = word_error.get('issue', '')
             error_suggestion = word_error.get('suggestion', '')
             st.warning(f"**{error_word}**: {error_issue} :material/arrow_forward: {error_suggestion}")
+
+    improvement_areas = assessment_result_data.get("areas_for_improvement", [])
+    if improvement_areas:
+        st.subheader("Try These Next")
+        display_list_items_with_bullets(improvement_areas, StreamlitMessageStyle.INFO)
 
     student_strengths = assessment_result_data.get("strengths", [])
     if student_strengths:
@@ -239,6 +239,25 @@ def main() -> None:
         None
     """
     st.set_page_config(page_title="Pronunciation Coach",page_icon=":material/mic:",layout=PageLayout.WIDE.value)
+
+    st.markdown(
+        """
+        <style>
+            section div.stMainBlockContainer {
+                padding-left: 20rem !important;
+                padding-right: 20rem !important;
+            }
+
+            @media (max-width: 768px) {
+                section div.stMainBlockContainer {
+                    padding-left: 1.5rem !important;
+                    padding-right: 1.5rem !important;
+                }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Initialize session state
     initialize_session_state()
