@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
 from enum import Enum
-from dotenv import load_dotenv
-
-# Load environment variables from the .env file once at import time.
-load_dotenv()
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class StreamlitMessageStyle(str, Enum):
@@ -52,92 +48,60 @@ class ButtonType(str, Enum):
     TERTIARY = "tertiary"
 
 
-@dataclass(frozen=True)
-class GenerationSettings:
+class GenerationSettings(BaseSettings):
     """Configuration for a Gemini generation request."""
+
+    model_config = SettingsConfigDict(extra='forbid')
 
     temperature: float
     max_output_tokens: int
     response_mime_type: str
 
 
-@dataclass(frozen=True)
-class AppConfig:
-    """Top-level application configuration."""
+class AppConfig(BaseSettings):
+    """Top-level application configuration loaded from environment variables."""
 
-    gemini_api_key: str
-    model_name: str
-    base_generation: GenerationSettings
-    assessment_generation: GenerationSettings
-    temp_file_extension: str
-    recorded_audio_mime_type: str
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='forbid'
+    )
 
+    gemini_api_key: str = Field(..., alias='GEMINI_API_KEY')
+    model_name: str = Field(..., alias='MODEL_NAME')
 
-def _require_env(name: str) -> str:
-    """Fetch an environment variable, raising if it is missing."""
+    # Base generation settings
+    model_temperature: float = Field(..., alias='MODEL_TEMPERATURE')
+    model_max_output_tokens: int = Field(..., alias='MODEL_MAX_OUTPUT_TOKENS')
+    model_response_mime_type: str = Field(..., alias='MODEL_RESPONSE_MIME_TYPE')
 
-    value = os.getenv(name)
-    if value is None:
-        raise RuntimeError(
-            f"Environment variable '{name}' is required but was not provided."
+    # Assessment generation settings
+    assessment_temperature: float = Field(..., alias='ASSESSMENT_TEMPERATURE')
+    assessment_max_output_tokens: int = Field(..., alias='ASSESSMENT_MAX_OUTPUT_TOKENS')
+    assessment_response_mime_type: str = Field(..., alias='ASSESSMENT_RESPONSE_MIME_TYPE')
+
+    # Audio settings
+    temp_file_extension: str = Field(..., alias='AUDIO_TEMP_FILE_EXTENSION')
+    recorded_audio_mime_type: str = Field(..., alias='RECORDED_AUDIO_MIME_TYPE')
+
+    @property
+    def base_generation(self) -> GenerationSettings:
+        """Get base generation settings."""
+        return GenerationSettings(
+            temperature=self.model_temperature,
+            max_output_tokens=self.model_max_output_tokens,
+            response_mime_type=self.model_response_mime_type,
         )
-    return value
+
+    @property
+    def assessment_generation(self) -> GenerationSettings:
+        """Get assessment generation settings."""
+        return GenerationSettings(
+            temperature=self.assessment_temperature,
+            max_output_tokens=self.assessment_max_output_tokens,
+            response_mime_type=self.assessment_response_mime_type,
+        )
 
 
-def _env_as_float(name: str) -> float:
-    """Fetch an environment variable as a float with error handling."""
-
-    value = _require_env(name)
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Environment variable '{name}' must be a float, got '{value}'."
-        ) from exc
-
-
-def _env_as_int(name: str) -> int:
-    """Fetch an environment variable as an int with error handling."""
-
-    value = _require_env(name)
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Environment variable '{name}' must be an int, got '{value}'."
-        ) from exc
-
-
-def load_app_config() -> AppConfig:
-    """Build the immutable configuration object sourced from the environment."""
-
-    gemini_api_key = _require_env("GEMINI_API_KEY")
-    model_name = _require_env("MODEL_NAME")
-
-    base_generation = GenerationSettings(
-        temperature=_env_as_float("MODEL_TEMPERATURE"),
-        max_output_tokens=_env_as_int("MODEL_MAX_OUTPUT_TOKENS"),
-        response_mime_type=_require_env("MODEL_RESPONSE_MIME_TYPE"),
-    )
-
-    assessment_generation = GenerationSettings(
-        temperature=_env_as_float("ASSESSMENT_TEMPERATURE"),
-        max_output_tokens=_env_as_int("ASSESSMENT_MAX_OUTPUT_TOKENS"),
-        response_mime_type=_require_env("ASSESSMENT_RESPONSE_MIME_TYPE"),
-    )
-
-    temp_file_extension = _require_env("AUDIO_TEMP_FILE_EXTENSION")
-    recorded_audio_mime_type = _require_env("RECORDED_AUDIO_MIME_TYPE")
-
-    return AppConfig(
-        gemini_api_key=gemini_api_key,
-        model_name=model_name,
-        base_generation=base_generation,
-        assessment_generation=assessment_generation,
-        temp_file_extension=temp_file_extension,
-        recorded_audio_mime_type=recorded_audio_mime_type,
-    )
-
-
-APP_CONFIG = load_app_config()
+APP_CONFIG = AppConfig()
 """Singleton instance containing the loaded configuration."""

@@ -4,40 +4,23 @@ Utility functions for the Pronunciation Assessment Application
 
 from __future__ import annotations
 
-from typing import Union
-
 import streamlit as st
 
 from config import StreamlitMessageStyle
 
 
 def display_list_items_with_bullets(
-    items_list: list,
-    container_type: Union[StreamlitMessageStyle, str] = StreamlitMessageStyle.INFO,
+    items_list: list[str],
+    container_type: StreamlitMessageStyle = StreamlitMessageStyle.INFO,
 ) -> None:
     """
     Display a list of items with bullet points using a Streamlit container style.
 
     Args:
         items_list: List of items to display
-        container_type: StreamlitMessageStyle enum value (or string) indicating the container
+        container_type: StreamlitMessageStyle enum value indicating the container style
     """
-    if isinstance(container_type, str):
-        try:
-            container_style = StreamlitMessageStyle(container_type)
-        except ValueError:
-            container_style = StreamlitMessageStyle.WRITE
-    else:
-        container_style = container_type
-
-    containers = {
-        StreamlitMessageStyle.INFO: st.info,
-        StreamlitMessageStyle.SUCCESS: st.success,
-        StreamlitMessageStyle.WARNING: st.warning,
-        StreamlitMessageStyle.WRITE: st.write,
-    }
-    render = containers.get(container_style, st.write)
-
+    render = getattr(st, container_type.value)
     for item in items_list:
         render(f"• {item}")
 

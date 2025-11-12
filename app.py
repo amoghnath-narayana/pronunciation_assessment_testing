@@ -8,7 +8,7 @@ from config import APP_CONFIG, ButtonType, PageLayout
 from practice_sentences import PRACTICE_SENTENCES
 from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
-from ui.components import AssessmentRenderer
+from ui.components import render_assessment
 
 # Configure Gemini API
 genai.configure(api_key=APP_CONFIG.gemini_api_key)
@@ -168,7 +168,7 @@ def main() -> None:
         assessment_result = st.session_state.assessment_result
 
         if assessment_result:
-            AssessmentRenderer.render_assessment(assessment_result)
+            render_assessment(assessment_result)
 
             if st.session_state.get("trigger_scroll_to_assessment"):
                 components.html(
