@@ -63,6 +63,19 @@ freeze:
     uv pip freeze > requirements.txt
     @echo "Dependencies frozen to requirements.txt"
 
+# Update packages respecting existing constraints
+update:
+    @test -d .venv || uv venv
+    uv pip install --upgrade -r requirements.txt
+    @echo "Packages updated within constraints"
+
+# Force update all packages to latest versions and freeze to requirements.txt
+update-hard:
+    @test -d .venv || uv venv
+    uv pip install --upgrade streamlit google-generativeai python-dotenv ruff
+    uv pip freeze > requirements.txt
+    @echo "All packages force-updated to latest versions and frozen to requirements.txt"
+
 # Run the app in development mode with auto-reload
 dev:
     uv run streamlit run app.py --server.runOnSave true
