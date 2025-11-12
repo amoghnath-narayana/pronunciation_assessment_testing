@@ -14,8 +14,6 @@ from ui.components import AssessmentRenderer
 genai.configure(api_key=APP_CONFIG.gemini_api_key)
 
 
-
-
 def initialize_session_state() -> None:
     """Set the Streamlit state values used across the flow."""
 
@@ -42,8 +40,6 @@ def get_practice_sentence(sentence_index: int = 0) -> str:
         str: The practice sentence at the given index
     """
     return PRACTICE_SENTENCES[sentence_index % len(PRACTICE_SENTENCES)]
-
-
 
 
 def main() -> None:
@@ -153,9 +149,11 @@ def main() -> None:
 
         if assess_button_clicked and st.session_state.audio_data:
             with st.spinner("Analyzing your pronunciation..."):
-                pronunciation_assessment_result = assessment_service.assess_pronunciation(
-                    st.session_state.audio_data,
-                    st.session_state.practice_sentence,
+                pronunciation_assessment_result = (
+                    assessment_service.assess_pronunciation(
+                        st.session_state.audio_data,
+                        st.session_state.practice_sentence,
+                    )
                 )
                 st.session_state.assessment_result = pronunciation_assessment_result
                 st.session_state.trigger_scroll_to_assessment = bool(

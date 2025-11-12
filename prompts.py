@@ -80,7 +80,7 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
 
     Reference:
       - https://ai.google.dev/gemini-api/docs/prompting-strategies
-      - 
+
     Note: The incomplete JSON at the end is INTENTIONAL (completion strategy).
     By starting the JSON with `"intelligibility_score": "`, we prime the model
     to continue generating the complete response, which is more efficient than
