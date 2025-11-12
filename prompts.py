@@ -37,11 +37,23 @@ FLAG ONLY if it prevents understanding:
 - S/SH confusion (sip→ship) = minor unless changes meaning
 - Missing aspiration (pin→bin) = minor for beginners
 
-PRIORITY:
-1. Did they try? → Acknowledge effort FIRST
-2. Can we understand the words? → If yes, give "good" or "excellent"
-3. Were the words correct? → Flag wrong words as CRITICAL
-4. Pronunciation clarity → Only assess if words are correct
+ASSESSMENT LOGIC (follow strictly):
+
+STEP 1: Check word accuracy first
+- Compare what was said vs. expected sentence word-by-word
+- If ANY word is wrong/missing → STOP, don't assess pronunciation
+- Flag ALL wrong/missing words in specific_errors with severity="critical"
+- Set intelligibility_score = "needs_practice"
+
+STEP 2: Only if ALL words are correct → assess pronunciation
+- Evaluate clarity, accent, fluency
+- Pronunciation issues get severity="minor" (acceptable for beginners)
+- intelligibility_score = "excellent" or "good" based on clarity
+
+CRITICAL RULES:
+- NEVER comment on pronunciation clarity in "strengths" if words are wrong
+- When words are wrong, strengths should only praise effort/trying
+- Wrong words (bike ≠ van, has ≠ have) mean we skip pronunciation assessment entirely
 
 ENCOURAGEMENT RATIO for beginners:
 - Always start with 2-3 specific strengths (what they did well)
@@ -66,12 +78,9 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
     """
     Create optimized assessment prompt using Google's completion strategy.
 
-    Optimization techniques applied:
-    - Completion strategy: Starts JSON structure for model to complete
-    - Concise examples: Removed redundant "Audio: Child says" prefixes
-    - Tighter JSON: Shows only essential fields in examples
-    - Removed weak instructions: "Return JSON only" replaced by structural cue
-
+    Reference:
+      - https://ai.google.dev/gemini-api/docs/prompting-strategies
+      - 
     Note: The incomplete JSON at the end is INTENTIONAL (completion strategy).
     By starting the JSON with `"intelligibility_score": "`, we prime the model
     to continue generating the complete response, which is more efficient than
@@ -94,7 +103,10 @@ Input: I... I have... a cat (hesitant, 5-second pauses, but all words correct)
 {{"intelligibility_score": "good", "strengths": ["Got all words right!", "Clear pronunciation of 'cat'", "Took time to think - great!"], "specific_errors": []}}
 
 Input: We have a red van (Expected: "I have a red van")
-{{"intelligibility_score": "needs_practice", "strengths": ["Clear voice"], "specific_errors": [{{"word": "I", "issue": "Said 'we' instead", "suggestion": "First word is 'I'", "severity": "critical"}}]}}
+{{"intelligibility_score": "needs_practice", "strengths": ["Good try!", "You spoke clearly"], "specific_errors": [{{"word": "I", "issue": "Said 'we' instead", "suggestion": "First word is 'I'", "severity": "critical"}}]}}
+
+Input: I has a red bike (Expected: "I have a red van")
+{{"intelligibility_score": "needs_practice", "strengths": ["Great effort!", "You tried the whole sentence"], "specific_errors": [{{"word": "have", "issue": "Said 'has' instead", "suggestion": "We say 'I have', not 'I has'", "severity": "critical"}}, {{"word": "van", "issue": "Said 'bike' instead", "suggestion": "The word is 'van' - a big vehicle", "severity": "critical"}}]}}
 
 Input: I have a red wan (V→W, Expected: "I have a red van")
 {{"intelligibility_score": "needs_practice", "strengths": ["All 5 words attempted!", "We can understand you"], "specific_errors": [{{"word": "van", "issue": "Said 'wan' (V→W)", "suggestion": "Put teeth on lower lip and buzz: vvv-an", "severity": "critical"}}]}}

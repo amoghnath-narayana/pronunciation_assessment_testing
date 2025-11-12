@@ -99,11 +99,11 @@ class AssessmentRenderer:
             assessment_result.intelligibility_score
         )
 
-        # Always show strengths first
-        AssessmentRenderer.render_strengths(assessment_result.strengths)
-
         # Show specific errors (critical and minor)
         AssessmentRenderer.render_specific_errors(assessment_result.specific_errors)
+
+        # Always show strengths first
+        AssessmentRenderer.render_strengths(assessment_result.strengths)
 
         # Show improvement areas
         AssessmentRenderer.render_improvement_areas(
