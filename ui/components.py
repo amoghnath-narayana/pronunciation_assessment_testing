@@ -2,7 +2,7 @@
 
 import streamlit as st
 from models.assessment_models import AssessmentResult
-from config import StreamlitMessageStyle
+from constants import StreamlitMessageStyle
 from utils import display_list_items_with_bullets
 
 

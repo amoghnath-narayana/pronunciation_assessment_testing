@@ -104,7 +104,7 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
     """
     word_count = len(expected_sentence_text.split())
     min_duration = word_count * 0.5
-    
+
     return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed)
 
 EXAMPLES:

@@ -1,34 +1,15 @@
-"""Central configuration and enums for the Pronunciation Assessment application."""
+"""Central configuration for the Pronunciation Assessment application."""
 
 from __future__ import annotations
 
-from enum import Enum
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class StreamlitMessageStyle(str, Enum):
-    """Supported Streamlit message container styles."""
-
-    INFO = "info"
-    SUCCESS = "success"
-    WARNING = "warning"
-    WRITE = "write"
-
-
-class ButtonType(str, Enum):
-    """Button appearance variants."""
-
-    PRIMARY = "primary"
-    SECONDARY = "secondary"
-    TERTIARY = "tertiary"
 
 
 class GenerationSettings(BaseSettings):
     """Configuration for a Gemini generation request."""
 
     model_config = SettingsConfigDict(extra="forbid")
-
     temperature: float
     max_output_tokens: int
     response_mime_type: str
@@ -79,5 +60,5 @@ class AppConfig(BaseSettings):
         )
 
 
-APP_CONFIG = AppConfig()
 """Singleton instance containing the loaded configuration."""
+APP_CONFIG = AppConfig()

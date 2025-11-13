@@ -16,7 +16,6 @@ from prompts import SYSTEM_PROMPT, build_assessment_prompt
 
 
 class GeminiAssessmentService:
-
     def __init__(self, config: AppConfig):
         self.config = config
         # New SDK uses a centralized Client object
@@ -73,9 +72,7 @@ class GeminiAssessmentService:
 
             # The model must generate complete valid JSON before returning
             response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=config
+                model=self.model_name, contents=contents, config=config
             )
             return self._parse_assessment_response(response.text)
 

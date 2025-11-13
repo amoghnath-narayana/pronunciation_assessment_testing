@@ -3,7 +3,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import APP_CONFIG, ButtonType
+from config import APP_CONFIG
+from constants import ButtonType
 from practice_sentences import PRACTICE_SENTENCES
 from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
