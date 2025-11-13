@@ -6,12 +6,6 @@ from config import StreamlitMessageStyle
 from utils import display_list_items_with_bullets
 
 
-def render_intelligibility_score(score: str) -> None:
-    if score:
-        labels = {"excellent": "Excellent", "good": "Good", "needs_practice": "Needs Practice"}
-        st.success(f"**Intelligibility: {labels.get(score.lower(), score.title())}**")
-
-
 def render_strengths(strengths: list[str]) -> None:
     if strengths:
         st.subheader("Great Job")
@@ -42,6 +36,5 @@ def render_assessment(assessment_result: AssessmentResult) -> None:
         st.error("No assessment result available")
         return
 
-    render_intelligibility_score(assessment_result.intelligibility_score)
     render_specific_errors(assessment_result.specific_errors)
     render_strengths(assessment_result.strengths)
