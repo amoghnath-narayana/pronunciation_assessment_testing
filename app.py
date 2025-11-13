@@ -3,7 +3,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import APP_CONFIG, ButtonType, PageLayout
+from config import APP_CONFIG, ButtonType
 from practice_sentences import PRACTICE_SENTENCES
 from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
@@ -37,7 +37,7 @@ def main() -> None:
     st.set_page_config(
         page_title="Pronunciation Coach",
         page_icon=":material/mic:",
-        layout=PageLayout.WIDE.value,
+        layout="wide",
     )
 
     st.markdown(

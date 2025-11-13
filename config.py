@@ -16,30 +16,6 @@ class StreamlitMessageStyle(str, Enum):
     WRITE = "write"
 
 
-class AudioMimeType(str, Enum):
-    """Audio MIME types supported by the application."""
-
-    WAV = "audio/wav"
-
-
-class ModelResponseMimeType(str, Enum):
-    """MIME types accepted for model responses."""
-
-    TEXT = "text/plain"
-
-
-class FileExtension(str, Enum):
-    """File extensions used in the application."""
-
-    WAV = ".wav"
-
-
-class PageLayout(str, Enum):
-    """Streamlit page layout options."""
-
-    WIDE = "wide"
-
-
 class ButtonType(str, Enum):
     """Button appearance variants."""
 
