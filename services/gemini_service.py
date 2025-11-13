@@ -6,7 +6,8 @@ from typing import Optional
 from json import JSONDecodeError
 
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import ValidationError
 
 from config import AppConfig
@@ -18,21 +19,12 @@ class GeminiAssessmentService:
 
     def __init__(self, config: AppConfig):
         self.config = config
-        self.model = self._initialize_model()
-
-    def _initialize_model(self) -> genai.GenerativeModel:
-        base_gen = self.config.base_generation
-        return genai.GenerativeModel(
-            model_name=self.config.model_name,
-            system_instruction=SYSTEM_PROMPT,
-            generation_config=genai.GenerationConfig(
-                temperature=base_gen.temperature,
-                max_output_tokens=base_gen.max_output_tokens,
-                response_mime_type=base_gen.response_mime_type,
-            ),
-        )
+        # New SDK uses a centralized Client object
+        self.client = genai.Client(api_key=config.gemini_api_key)
+        self.model_name = config.model_name
 
     def _upload_audio_file(self, audio_data_bytes: bytes):
+        """Upload audio file using new SDK's Files API."""
         temp_path: Optional[str] = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -40,7 +32,8 @@ class GeminiAssessmentService:
             ) as f:
                 f.write(audio_data_bytes)
                 temp_path = f.name
-            return genai.upload_file(temp_path)
+            # New SDK: client.files.upload()
+            return self.client.files.upload(file=temp_path)
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -53,7 +46,7 @@ class GeminiAssessmentService:
         return AssessmentResult.model_validate_json(response_text[start : end + 1])
 
     def assess_pronunciation(
-        self, audio_data_bytes: bytes, expected_sentence_text: str
+        self, audio_data_bytes: bytes, expected_sentence_text: str, stream: bool = False
     ) -> Optional[AssessmentResult]:
         try:
             uploaded_file = self._upload_audio_file(audio_data_bytes)
@@ -64,22 +57,39 @@ class GeminiAssessmentService:
             prompt = build_assessment_prompt(expected_sentence_text)
             assess_gen = self.config.assessment_generation
 
-            try:
-                gen_config = genai.GenerationConfig(
-                    temperature=assess_gen.temperature,
-                    max_output_tokens=assess_gen.max_output_tokens,
-                    response_mime_type="application/json",
-                    response_schema=get_gemini_response_schema(),
-                )
-            except (TypeError, AttributeError):
-                gen_config = genai.GenerationConfig(
-                    temperature=assess_gen.temperature,
-                    max_output_tokens=assess_gen.max_output_tokens,
-                    response_mime_type=assess_gen.response_mime_type,
-                )
+            # New SDK: Use types.GenerateContentConfig with proper ThinkingConfig
+            config = types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=assess_gen.temperature,
+                max_output_tokens=assess_gen.max_output_tokens,
+                response_mime_type="application/json",
+                response_schema=get_gemini_response_schema(),
+                # Disable thinking mode for faster responses (10-30% speedup)
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
 
-            response = self.model.generate_content([prompt, uploaded_file], generation_config=gen_config)
-            return self._parse_assessment_response(response.text)
+            # Create content with prompt and uploaded file
+            contents = [prompt, uploaded_file]
+
+            if stream:
+                # Streaming mode - accumulate chunks
+                full_text = ""
+                for chunk in self.client.models.generate_content_stream(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config
+                ):
+                    if chunk.text:
+                        full_text += chunk.text
+                return self._parse_assessment_response(full_text)
+            else:
+                # Non-streaming mode (current behavior)
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config
+                )
+                return self._parse_assessment_response(response.text)
 
         except (JSONDecodeError, ValueError) as e:
             st.error(f"Unable to parse assessment response: {e}")

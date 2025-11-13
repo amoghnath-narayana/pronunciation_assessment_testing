@@ -2,7 +2,6 @@
 
 import streamlit as st
 import streamlit.components.v1 as components
-import google.generativeai as genai
 
 from config import APP_CONFIG, ButtonType, PageLayout
 from practice_sentences import PRACTICE_SENTENCES
@@ -10,8 +9,7 @@ from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
 from ui.components import render_assessment
 
-# Configure Gemini API
-genai.configure(api_key=APP_CONFIG.gemini_api_key)
+# Note: New SDK (google.genai) handles API key through Client object in GeminiAssessmentService
 
 
 def initialize_session_state() -> None:
