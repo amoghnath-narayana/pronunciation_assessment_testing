@@ -46,7 +46,7 @@ class GeminiAssessmentService:
         return AssessmentResult.model_validate_json(response_text[start : end + 1])
 
     def assess_pronunciation(
-        self, audio_data_bytes: bytes, expected_sentence_text: str, stream: bool = False
+        self, audio_data_bytes: bytes, expected_sentence_text: str
     ) -> Optional[AssessmentResult]:
         try:
             uploaded_file = self._upload_audio_file(audio_data_bytes)
@@ -71,25 +71,13 @@ class GeminiAssessmentService:
             # Create content with prompt and uploaded file
             contents = [prompt, uploaded_file]
 
-            if stream:
-                # Streaming mode - accumulate chunks
-                full_text = ""
-                for chunk in self.client.models.generate_content_stream(
-                    model=self.model_name,
-                    contents=contents,
-                    config=config
-                ):
-                    if chunk.text:
-                        full_text += chunk.text
-                return self._parse_assessment_response(full_text)
-            else:
-                # Non-streaming mode (current behavior)
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=config
-                )
-                return self._parse_assessment_response(response.text)
+            # The model must generate complete valid JSON before returning
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config
+            )
+            return self._parse_assessment_response(response.text)
 
         except (JSONDecodeError, ValueError) as e:
             st.error(f"Unable to parse assessment response: {e}")
