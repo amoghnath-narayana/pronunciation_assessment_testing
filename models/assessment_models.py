@@ -71,21 +71,15 @@ def get_gemini_response_schema() -> Dict[str, Any]:
                 "properties": {
                     "phonetic_accuracy": {"type": "string"},
                     "fluency": {"type": "string"},
-                    "prosody": {"type": "string"}
-                }
+                    "prosody": {"type": "string"},
+                },
             },
             "intelligibility_score": {
                 "type": "string",
-                "enum": ["excellent", "good", "needs_practice"]
+                "enum": ["excellent", "good", "needs_practice"],
             },
-            "strengths": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "areas_for_improvement": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
+            "strengths": {"type": "array", "items": {"type": "string"}},
+            "areas_for_improvement": {"type": "array", "items": {"type": "string"}},
             "specific_errors": {
                 "type": "array",
                 "items": {
@@ -94,16 +88,13 @@ def get_gemini_response_schema() -> Dict[str, Any]:
                         "word": {"type": "string"},
                         "issue": {"type": "string"},
                         "suggestion": {"type": "string"},
-                        "severity": {"type": "string", "enum": ["critical", "minor"]}
+                        "severity": {"type": "string", "enum": ["critical", "minor"]},
                     },
-                    "required": ["word", "issue", "suggestion", "severity"]
-                }
+                    "required": ["word", "issue", "suggestion", "severity"],
+                },
             },
-            "practice_suggestions": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "next_challenge_level": {"type": "string"}
+            "practice_suggestions": {"type": "array", "items": {"type": "string"}},
+            "next_challenge_level": {"type": "string"},
         },
         "required": [
             "intelligibility_score",
@@ -111,6 +102,6 @@ def get_gemini_response_schema() -> Dict[str, Any]:
             "areas_for_improvement",
             "specific_errors",
             "practice_suggestions",
-            "next_challenge_level"
-        ]
+            "next_challenge_level",
+        ],
     }
