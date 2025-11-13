@@ -8,6 +8,7 @@ Optimization improvements:
 - OUTPUT SCHEMA in system prompt for clarity
 - Follows Google's few-shot learning patterns
 - Reduces token usage by ~57% per request
+- Leverages Gemini's native audio duration perception for speed analysis
 """
 
 SYSTEM_PROMPT = """Pronunciation coach for Indian K1/K2 children (ages 5-7) learning English.
@@ -23,6 +24,10 @@ BEGINNER EXPECTATIONS (What's normal at this level):
 - Heavy Indian English accent (perfectly fine)
 - Saying 3-4 words correctly > saying all words perfectly
 - Partial sentences if child tried (still deserves encouragement)
+
+SPEAKING SPEED (measure audio duration):
+- Under 0.5 sec/word AND words blur together → flag as "fast" (severity="minor")
+- Slow/normal pace → omit speaking_speed field entirely
 
 ACCEPT (Natural for Indian beginners):
 - Retroflex t/d/r, vowel shifts (cat→ket), syllable-timed rhythm
@@ -50,6 +55,10 @@ STEP 2: Only if ALL words are correct → assess pronunciation
 - Pronunciation issues get severity="minor" (acceptable for beginners)
 - intelligibility_score = "excellent" or "good" based on clarity
 
+STEP 3: Check speed (optional)
+- If audio < 0.5 sec/word AND words rushed → include "speaking_speed": "fast"
+- Otherwise omit speaking_speed field
+
 CRITICAL RULES:
 - NEVER comment on pronunciation clarity in "strengths" if words are wrong
 - When words are wrong, strengths should only praise effort/trying
@@ -68,7 +77,8 @@ OUTPUT SCHEMA:
   "areas_for_improvement": ["max 2 suggestions, framed positively"],
   "specific_errors": [{"word": "X", "issue": "Y", "suggestion": "Z", "severity": "critical|minor"}],
   "practice_suggestions": ["2-3 fun activities appropriate for ages 5-7"],
-  "next_challenge_level": "brief, encouraging next step"
+  "next_challenge_level": "brief, encouraging next step",
+  "speaking_speed": "slow|normal|fast (optional - only include if notably fast AND unclear)"
 }
 
 Feedback tone: Warm, playful, encouraging. Treat like you're a patient teacher working with a shy 6-year-old."""
@@ -92,7 +102,10 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
     Returns:
         str: Optimized assessment prompt
     """
-    return f"""Expected: "{expected_sentence_text}"
+    word_count = len(expected_sentence_text.split())
+    min_duration = word_count * 0.5
+    
+    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed)
 
 EXAMPLES:
 
@@ -113,6 +126,9 @@ Input: I have a red wan (V→W, Expected: "I have a red van")
 
 Input: I have (Expected: "I have a red van", child stopped mid-sentence)
 {{"intelligibility_score": "needs_practice", "strengths": ["Good start with 'I have'", "Clear voice"], "specific_errors": [{{"word": "sentence", "issue": "Didn't finish", "suggestion": "Let's try the whole sentence: I have a red van", "severity": "minor"}}]}}
+
+Input: Ihavearedvan (1.2s audio, words rushed together)
+{{"intelligibility_score": "good", "strengths": ["All words correct!", "You know the sentence"], "areas_for_improvement": [], "specific_errors": [{{"word": "pacing", "issue": "Words rushed together", "suggestion": "Practice slowly: I... have... a... red... van", "severity": "minor"}}], "practice_suggestions": ["Count to 3 between words", "Practice with a metronome"], "next_challenge_level": "Try a longer sentence at your pace", "speaking_speed": "fast"}}
 
 Assessment:
 {{

@@ -29,19 +29,6 @@ def initialize_session_state() -> None:
         st.session_state.setdefault(key, value)
 
 
-def get_practice_sentence(sentence_index: int = 0) -> str:
-    """
-    Get a practice sentence from the list.
-
-    Args:
-        sentence_index: Index of the sentence to retrieve
-
-    Returns:
-        str: The practice sentence at the given index
-    """
-    return PRACTICE_SENTENCES[sentence_index % len(PRACTICE_SENTENCES)]
-
-
 def main() -> None:
     """
     Main application function.
