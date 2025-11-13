@@ -63,4 +63,54 @@ def get_gemini_response_schema() -> Dict[str, Any]:
     Returns:
         Dict containing JSON schema compatible with Gemini API
     """
-    return AssessmentResult.model_json_schema()
+    return {
+        "type": "object",
+        "properties": {
+            "detailed_feedback": {
+                "type": "object",
+                "properties": {
+                    "phonetic_accuracy": {"type": "string"},
+                    "fluency": {"type": "string"},
+                    "prosody": {"type": "string"}
+                }
+            },
+            "intelligibility_score": {
+                "type": "string",
+                "enum": ["excellent", "good", "needs_practice"]
+            },
+            "strengths": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "areas_for_improvement": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "specific_errors": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "word": {"type": "string"},
+                        "issue": {"type": "string"},
+                        "suggestion": {"type": "string"},
+                        "severity": {"type": "string", "enum": ["critical", "minor"]}
+                    },
+                    "required": ["word", "issue", "suggestion", "severity"]
+                }
+            },
+            "practice_suggestions": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "next_challenge_level": {"type": "string"}
+        },
+        "required": [
+            "intelligibility_score",
+            "strengths",
+            "areas_for_improvement",
+            "specific_errors",
+            "practice_suggestions",
+            "next_challenge_level"
+        ]
+    }

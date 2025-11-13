@@ -149,11 +149,9 @@ def main() -> None:
 
         if assess_button_clicked and st.session_state.audio_data:
             with st.spinner("Analyzing your pronunciation..."):
-                pronunciation_assessment_result = (
-                    assessment_service.assess_pronunciation(
-                        st.session_state.audio_data,
-                        st.session_state.practice_sentence,
-                    )
+                pronunciation_assessment_result = assessment_service.assess_pronunciation(
+                    st.session_state.audio_data,
+                    st.session_state.practice_sentence,
                 )
                 st.session_state.assessment_result = pronunciation_assessment_result
                 st.session_state.trigger_scroll_to_assessment = bool(
