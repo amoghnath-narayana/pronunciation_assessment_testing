@@ -18,6 +18,7 @@ def initialize_session_state():
         "practice_sentence": "",
         "sentence_index": 0,
         "trigger_scroll_to_assessment": False,
+        "tts_audio_data": None,
     }.items():
         st.session_state.setdefault(key, value)
 
@@ -73,6 +74,7 @@ def main():
                 st.session_state.assessment_result = None
                 st.session_state.audio_data = None
                 st.session_state.trigger_scroll_to_assessment = False
+                st.session_state.tts_audio_data = None
                 st.rerun()
 
         current_practice_sentence = PRACTICE_SENTENCES[st.session_state.sentence_index]
@@ -89,10 +91,12 @@ def main():
             st.session_state.audio_data = recorded_audio_bytes
             st.session_state.assessment_result = None
             st.session_state.trigger_scroll_to_assessment = False
+            st.session_state.tts_audio_data = None
         elif st.session_state.audio_data and not st.session_state.get(audio_input_key):
             st.session_state.audio_data = None
             st.session_state.assessment_result = None
             st.session_state.trigger_scroll_to_assessment = False
+            st.session_state.tts_audio_data = None
 
         if st.session_state.audio_data:
             st.audio(
@@ -121,6 +125,12 @@ def main():
                     pronunciation_assessment_result
                 )
 
+                if pronunciation_assessment_result:
+                    tts_audio = assessment_service.generate_tts_narration(
+                        pronunciation_assessment_result
+                    )
+                    st.session_state.tts_audio_data = tts_audio
+
     with assessment_section_container:
         st.divider()
         st.markdown('<div id="assessment-anchor"></div>', unsafe_allow_html=True)
@@ -130,6 +140,9 @@ def main():
 
         if assessment_result:
             render_assessment(assessment_result)
+
+            if st.session_state.tts_audio_data:
+                st.audio(st.session_state.tts_audio_data, format="audio/wav", autoplay=True)
 
             if st.session_state.get("trigger_scroll_to_assessment"):
                 components.html(

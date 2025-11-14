@@ -1,7 +1,9 @@
 """Service layer for Gemini API interactions."""
 
+import io
 import os
 import tempfile
+import wave
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -12,7 +14,18 @@ from pydantic import ValidationError
 
 from config import AppConfig
 from models.assessment_models import AssessmentResult, get_gemini_response_schema
-from prompts import SYSTEM_PROMPT, build_assessment_prompt
+from prompts import SYSTEM_PROMPT, build_assessment_prompt, build_tts_narration_prompt
+
+
+def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
+    """Convert raw PCM audio data to WAV format."""
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, 'wb') as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_data)
+    return wav_buffer.getvalue()
 
 
 @dataclass
@@ -61,4 +74,33 @@ class GeminiAssessmentService:
             st.error(f"Invalid assessment response: {e}")
         except Exception as e:
             st.error(f"Error during assessment: {e}")
+        return None
+
+    def generate_tts_narration(self, assessment_result: AssessmentResult) -> bytes:
+        """Generate TTS audio from assessment result."""
+        try:
+            narration_text = build_tts_narration_prompt(assessment_result)
+
+            response = self.client.models.generate_content(
+                model=self.config.tts_model_name,
+                contents=f"{self.config.tts_voice_style_prompt}\n\n{narration_text}",
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=self.config.tts_voice_name
+                            )
+                        )
+                    ),
+                ),
+            )
+
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data:
+                        return pcm_to_wav(part.inline_data.data)
+
+        except Exception as e:
+            st.error(f"Error generating TTS: {e}")
         return None

@@ -12,6 +12,9 @@ class AppConfig(BaseSettings):
     assessment_max_output_tokens: int
     temp_file_extension: str
     recorded_audio_mime_type: str
+    tts_model_name: str
+    tts_voice_name: str
+    tts_voice_style_prompt: str
 
 
 APP_CONFIG = AppConfig()
