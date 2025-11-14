@@ -3,7 +3,6 @@
 import os
 import tempfile
 from typing import Optional
-from json import JSONDecodeError
 
 import streamlit as st
 from google import genai
@@ -38,11 +37,8 @@ class GeminiAssessmentService:
                 os.unlink(temp_path)
 
     def _parse_assessment_response(self, response_text: str) -> AssessmentResult:
-        start = response_text.find("{")
-        end = response_text.rfind("}")
-        if start == -1 or end <= start:
-            raise ValueError("Response does not contain a JSON object.")
-        return AssessmentResult.model_validate_json(response_text[start : end + 1])
+        """Parse assessment response as JSON."""
+        return AssessmentResult.model_validate_json(response_text)
 
     def assess_pronunciation(
         self, audio_data_bytes: bytes, expected_sentence_text: str
@@ -76,7 +72,7 @@ class GeminiAssessmentService:
             )
             return self._parse_assessment_response(response.text)
 
-        except (JSONDecodeError, ValueError) as e:
+        except ValueError as e:
             st.error(f"Unable to parse assessment response: {e}")
             return None
         except ValidationError as e:

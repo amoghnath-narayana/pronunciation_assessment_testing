@@ -17,6 +17,7 @@ def render_specific_errors(errors: list) -> None:
         return
 
     critical = [e for e in errors if e.severity == "critical"]
+    
     minor = [e for e in errors if e.severity == "minor"]
 
     if critical:
@@ -37,4 +38,5 @@ def render_assessment(assessment_result: AssessmentResult) -> None:
         return
 
     render_specific_errors(assessment_result.specific_errors)
+    
     render_strengths(assessment_result.strengths)
