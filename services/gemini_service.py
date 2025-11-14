@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from dataclasses import dataclass
 from typing import Optional
 
 import streamlit as st
@@ -14,12 +15,9 @@ from models.assessment_models import AssessmentResult, get_gemini_response_schem
 from prompts import SYSTEM_PROMPT, build_assessment_prompt
 
 
+@dataclass
 class GeminiAssessmentService:
-    def __init__(self, config: AppConfig):
-        self.config = config
-        # New SDK uses a centralized Client object
-        self.client = genai.Client(api_key=config.gemini_api_key)
-        self.model_name = config.model_name
+    config: AppConfig
 
     def _upload_audio_file(self, audio_data_bytes: bytes):
         """Upload audio file using new SDK's Files API."""
@@ -31,7 +29,8 @@ class GeminiAssessmentService:
                 f.write(audio_data_bytes)
                 temp_path = f.name
             # New SDK: client.files.upload()
-            return self.client.files.upload(file=temp_path)
+            client = genai.Client(api_key=self.config.gemini_api_key)
+            return client.files.upload(file=temp_path)
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -67,8 +66,9 @@ class GeminiAssessmentService:
             contents = [prompt, uploaded_file]
 
             # The model must generate complete valid JSON before returning
-            response = self.client.models.generate_content(
-                model=self.model_name, contents=contents, config=config
+            client = genai.Client(api_key=self.config.gemini_api_key)
+            response = client.models.generate_content(
+                model=self.config.model_name, contents=contents, config=config
             )
             return self._parse_assessment_response(response.text)
 
