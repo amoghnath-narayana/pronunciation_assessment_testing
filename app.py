@@ -10,31 +10,19 @@ from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
 from ui.components import render_assessment
 
-# Note: New SDK (google.genai) handles API key through Client object in GeminiAssessmentService
 
-
-def initialize_session_state() -> None:
-    """Set the Streamlit state values used across the flow."""
-
-    defaults = {
+def initialize_session_state():
+    for key, value in {
         "audio_data": None,
         "assessment_result": None,
         "practice_sentence": "",
         "sentence_index": 0,
         "trigger_scroll_to_assessment": False,
-    }
-
-    for key, value in defaults.items():
+    }.items():
         st.session_state.setdefault(key, value)
 
 
-def main() -> None:
-    """
-    Main application function.
-
-    Returns:
-        None
-    """
+def main():
     st.set_page_config(
         page_title="Pronunciation Coach",
         page_icon=":material/mic:",
@@ -60,24 +48,20 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # Initialize session state
     initialize_session_state()
-
-    # Initialize services
     assessment_service = GeminiAssessmentService(APP_CONFIG)
 
     mic_section_container = st.container()
     assessment_section_container = st.container()
 
     with mic_section_container:
-        # Header and sentence refresh button
         header_col, button_col = st.columns([3, 1])
 
         with header_col:
             st.subheader("Practice Sentence")
 
         with button_col:
-            st.write("")  # Empty space for alignment
+            st.write("")
             if st.button(
                 ":material/refresh: New Sentence",
                 type=ButtonType.PRIMARY.value,
@@ -91,15 +75,10 @@ def main() -> None:
                 st.session_state.trigger_scroll_to_assessment = False
                 st.rerun()
 
-        # Get practice sentence from the list using current index
         current_practice_sentence = PRACTICE_SENTENCES[st.session_state.sentence_index]
         st.session_state.practice_sentence = current_practice_sentence
-
-        # Display the sentence in a simple, clean box
         create_practice_sentence_display_box(current_practice_sentence)
 
-        # Audio input widget (microphone recording)
-        # Use sentence index for unique key to ensure recorder resets when sentence changes
         audio_input_key = f"audio_input_{st.session_state.sentence_index}"
         recorded_audio_value = st.audio_input(
             "Tap the mic to start speaking", key=audio_input_key
@@ -110,11 +89,7 @@ def main() -> None:
             st.session_state.audio_data = recorded_audio_bytes
             st.session_state.assessment_result = None
             st.session_state.trigger_scroll_to_assessment = False
-        elif (
-            st.session_state.audio_data is not None
-            and st.session_state.get(audio_input_key) is None
-        ):
-            # Clear stored audio when the recorder value is removed by the user
+        elif st.session_state.audio_data and not st.session_state.get(audio_input_key):
             st.session_state.audio_data = None
             st.session_state.assessment_result = None
             st.session_state.trigger_scroll_to_assessment = False

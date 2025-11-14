@@ -2,11 +2,10 @@
 
 from typing import Any, Dict, List, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class SpecificError(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
     word: str
     issue: str
     suggestion: str
@@ -14,7 +13,6 @@ class SpecificError(BaseModel):
 
 
 class AssessmentResult(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
     strengths: List[str] = Field(default_factory=list)
     specific_errors: List[SpecificError] = Field(default_factory=list)
 
