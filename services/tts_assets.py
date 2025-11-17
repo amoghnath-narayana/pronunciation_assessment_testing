@@ -18,18 +18,23 @@ class TTSAssetLoader:
     assets_dir: Path
     _manifest: Dict = field(default_factory=dict, init=False, repr=False)
     _audio_cache: Dict[str, List[AudioSegment]] = field(default_factory=dict, init=False, repr=False)
-    _loaded_successfully: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
-        """Initialize the asset loader by loading manifest and preloading assets."""
-        try:
-            self._manifest = self._load_manifest()
-            self._preload_assets()
-            self._loaded_successfully = True
-            logfire.info(f"TTSAssetLoader initialized successfully with {len(self._audio_cache)} categories")
-        except Exception as e:
-            logfire.error(f"Failed to initialize TTSAssetLoader: {e}")
-            self._loaded_successfully = False
+        """Initialize the asset loader by loading manifest and preloading assets.
+        
+        Raises:
+            FileNotFoundError: If manifest file doesn't exist
+            ValueError: If manifest is invalid or no assets were loaded
+            Exception: If initialization fails for any other reason
+        """
+        self._manifest = self._load_manifest()
+        self._preload_assets()
+        
+        # Validate that assets were actually loaded
+        if not self._audio_cache:
+            raise ValueError("No audio assets were loaded successfully. Check manifest and asset files.")
+        
+        logfire.info(f"TTSAssetLoader initialized successfully with {len(self._audio_cache)} categories")
 
     def _load_manifest(self) -> Dict:
         """Load and validate manifest.json structure.
@@ -128,10 +133,4 @@ class TTSAssetLoader:
         logfire.debug(f"Selected random variant from category '{category}' ({len(variants)} available)")
         return selected
 
-    def is_available(self) -> bool:
-        """Check if assets loaded successfully.
-        
-        Returns:
-            bool: True if assets were loaded successfully, False otherwise
-        """
-        return self._loaded_successfully and len(self._audio_cache) > 0
+

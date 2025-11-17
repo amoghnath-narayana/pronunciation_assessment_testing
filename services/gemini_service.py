@@ -1,7 +1,5 @@
 """Service layer for Gemini API interactions."""
 
-import os
-import tempfile
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -15,7 +13,7 @@ from pydantic import ValidationError
 from config import AppConfig
 from models.assessment_models import AssessmentResult, get_gemini_response_schema
 from prompts import SYSTEM_PROMPT, build_assessment_prompt, build_tts_narration_prompt
-from utils import pcm_to_wav
+from utils import pcm_to_wav, temp_audio_file
 
 
 @dataclass
@@ -57,15 +55,11 @@ class GeminiAssessmentService:
         from services.tts_cache import TTSCacheService
         from services.tts_composer import TTSNarrationComposer
         
-        # Initialize asset loader
+        # Initialize asset loader (will raise exception if initialization fails)
         asset_loader = TTSAssetLoader(
             manifest_path=Path(self.config.tts_manifest_path),
             assets_dir=Path(self.config.tts_assets_dir)
         )
-        
-        # Verify assets loaded successfully
-        if not asset_loader.is_available():
-            raise Exception("TTSAssetLoader failed to load assets")
         
         # Initialize cache service
         cache_service = TTSCacheService(
@@ -89,17 +83,16 @@ class GeminiAssessmentService:
         return composer
 
     def _upload_audio_file(self, audio_data_bytes: bytes):
-        temp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                delete=False, suffix=self.config.temp_file_extension
-            ) as f:
-                f.write(audio_data_bytes)
-                temp_path = f.name
+        """Upload audio file to Gemini API using temporary file.
+        
+        Args:
+            audio_data_bytes: Audio data to upload
+            
+        Returns:
+            Uploaded file object from Gemini API
+        """
+        with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
             return self.client.files.upload(file=temp_path)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
 
     def assess_pronunciation(self, audio_data_bytes: bytes, expected_sentence_text: str):
         try:
