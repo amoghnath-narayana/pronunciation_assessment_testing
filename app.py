@@ -3,6 +3,7 @@
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
+import logfire
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -12,6 +13,8 @@ from practice_sentences import PRACTICE_SENTENCES
 from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
 from ui.components import render_assessment
+
+logfire.configure()
 
 
 def initialize_session_state():

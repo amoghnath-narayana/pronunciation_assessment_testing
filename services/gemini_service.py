@@ -1,10 +1,7 @@
 """Service layer for Gemini API interactions."""
 
-import io
-import logging
 import os
 import tempfile
-import wave
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -12,24 +9,13 @@ from pathlib import Path
 import streamlit as st
 from google import genai
 from google.genai import types
+import logfire
 from pydantic import ValidationError
 
 from config import AppConfig
 from models.assessment_models import AssessmentResult, get_gemini_response_schema
 from prompts import SYSTEM_PROMPT, build_assessment_prompt, build_tts_narration_prompt
-
-logger = logging.getLogger(__name__)
-
-
-def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
-    """Convert raw PCM audio data to WAV format."""
-    wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, 'wb') as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_data)
-    return wav_buffer.getvalue()
+from utils import pcm_to_wav
 
 
 @dataclass
@@ -42,13 +28,13 @@ class GeminiAssessmentService:
         if self.config.tts_enable_optimization:
             try:
                 self._composer = self._initialize_composer()
-                logger.info("TTS optimization enabled with composer")
+                logfire.info("TTS optimization enabled with composer")
             except Exception as e:
-                logger.warning(f"TTS optimization unavailable: {e}. Using fallback.")
+                logfire.warning(f"TTS optimization unavailable: {e}. Using fallback.")
                 st.warning(f"TTS optimization unavailable: {e}. Using fallback.")
                 self._composer = None
         else:
-            logger.info("TTS optimization disabled, using legacy TTS")
+            logfire.info("TTS optimization disabled, using legacy TTS")
             self._composer = None
 
     @cached_property
@@ -99,7 +85,7 @@ class GeminiAssessmentService:
             cache_service=cache_service
         )
         
-        logger.info("TTSNarrationComposer initialized successfully")
+        logfire.info("TTSNarrationComposer initialized successfully")
         return composer
 
     def _upload_audio_file(self, audio_data_bytes: bytes):
@@ -138,7 +124,7 @@ class GeminiAssessmentService:
 
             # Debug: Log errors from Gemini
             if result.specific_errors:
-                logger.info(f"Gemini detected {len(result.specific_errors)} errors: {[(e.word, e.issue) for e in result.specific_errors]}")
+                logfire.info(f"Gemini detected {len(result.specific_errors)} errors: {[(e.word, e.issue) for e in result.specific_errors]}")
 
             return result
 
@@ -163,14 +149,14 @@ class GeminiAssessmentService:
         # Use optimized path if composer is available
         if self._composer:
             try:
-                logger.debug("Using optimized TTS composer")
+                logfire.debug("Using optimized TTS composer")
                 return self._composer.compose(assessment_result)
             except Exception as e:
-                logger.warning(f"TTS composition failed: {e}. Using fallback.")
+                logfire.warning(f"TTS composition failed: {e}. Using fallback.")
                 st.warning(f"TTS composition failed: {e}. Using fallback.")
         
         # Fallback to legacy implementation
-        logger.debug("Using legacy TTS generation")
+        logfire.debug("Using legacy TTS generation")
         return self._generate_tts_legacy(assessment_result)
 
     def _generate_tts_legacy(self, assessment_result: AssessmentResult) -> bytes:
@@ -209,6 +195,6 @@ class GeminiAssessmentService:
                         return pcm_to_wav(part.inline_data.data)
 
         except Exception as e:
-            logger.error(f"Error generating TTS: {e}")
+            logfire.error(f"Error generating TTS: {e}")
             st.error(f"Error generating TTS: {e}")
         return None

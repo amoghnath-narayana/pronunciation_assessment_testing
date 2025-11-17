@@ -1,16 +1,14 @@
 """Service for composing final TTS audio from static and dynamic segments."""
 
 import io
-import logging
 from dataclasses import dataclass
 
+import logfire
 from pydub import AudioSegment
 
 from models.assessment_models import AssessmentResult
 from services.tts_assets import TTSAssetLoader
 from services.tts_cache import TTSCacheService
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -35,22 +33,22 @@ class TTSNarrationComposer:
         try:
             # Handle perfect reading case (no errors)
             if not assessment_result.specific_errors:
-                logger.info("Composing perfect reading narration (single intro clip)")
+                logfire.info("Composing perfect reading narration (single intro clip)")
                 intro = self.asset_loader.pick("perfect_intro")
                 normalized = self._normalize_loudness(intro)
                 return self._export_wav(normalized)
             
             # Handle error case (intro + dynamic errors + outro)
-            logger.info(f"Composing error narration with {len(assessment_result.specific_errors)} errors")
+            logfire.info(f"Composing error narration with {len(assessment_result.specific_errors)} errors")
             segments = []
             
             # Add intro clip
             try:
                 intro = self.asset_loader.pick("needs_work_intro")
                 segments.append(intro)
-                logger.debug("Added needs_work_intro clip")
+                logfire.debug("Added needs_work_intro clip")
             except ValueError as e:
-                logger.error(f"Failed to load intro clip: {e}")
+                logfire.error(f"Failed to load intro clip: {e}")
                 raise ValueError(f"Missing required asset: needs_work_intro") from e
             
             # Add dynamic error corrections
@@ -65,10 +63,10 @@ class TTSNarrationComposer:
                     # Convert bytes to AudioSegment
                     error_segment = AudioSegment.from_wav(io.BytesIO(error_audio_bytes))
                     segments.append(error_segment)
-                    logger.debug(f"Added dynamic error clip {idx + 1}/{len(assessment_result.specific_errors)}")
+                    logfire.debug(f"Added dynamic error clip {idx + 1}/{len(assessment_result.specific_errors)}")
                     
                 except Exception as e:
-                    logger.error(f"Failed to generate error clip for '{error.word}': {e}")
+                    logfire.error(f"Failed to generate error clip for '{error.word}': {e}")
                     # Continue with other errors rather than failing completely
                     continue
             
@@ -76,9 +74,9 @@ class TTSNarrationComposer:
             try:
                 outro = self.asset_loader.pick("closing_cheer")
                 segments.append(outro)
-                logger.debug("Added closing_cheer clip")
+                logfire.debug("Added closing_cheer clip")
             except ValueError as e:
-                logger.error(f"Failed to load outro clip: {e}")
+                logfire.error(f"Failed to load outro clip: {e}")
                 raise ValueError(f"Missing required asset: closing_cheer") from e
             
             # Ensure we have at least some segments
@@ -96,12 +94,12 @@ class TTSNarrationComposer:
             
             # Calculate total duration for logging
             duration_seconds = len(normalized) / 1000.0
-            logger.info(f"Composed audio: {len(segments)} segments, {duration_seconds:.2f}s total")
+            logfire.info(f"Composed audio: {len(segments)} segments, {duration_seconds:.2f}s total")
             
             return self._export_wav(normalized)
             
         except Exception as e:
-            logger.error(f"Audio composition failed: {e}")
+            logfire.error(f"Audio composition failed: {e}")
             raise
 
     def _normalize_loudness(self, audio: AudioSegment) -> AudioSegment:
@@ -120,10 +118,10 @@ class TTSNarrationComposer:
             # Target -20 dBFS for speech (standard level)
             target_dbfs = -20.0
             normalized = audio.apply_gain(target_dbfs - audio.dBFS)
-            logger.debug(f"Normalized audio from {audio.dBFS:.2f} dBFS to {normalized.dBFS:.2f} dBFS")
+            logfire.debug(f"Normalized audio from {audio.dBFS:.2f} dBFS to {normalized.dBFS:.2f} dBFS")
             return normalized
         except Exception as e:
-            logger.warning(f"Loudness normalization failed: {e}, returning original audio")
+            logfire.warning(f"Loudness normalization failed: {e}, returning original audio")
             return audio
 
     def _export_wav(self, audio: AudioSegment) -> bytes:
@@ -139,8 +137,8 @@ class TTSNarrationComposer:
             buffer = io.BytesIO()
             audio.export(buffer, format="wav")
             wav_bytes = buffer.getvalue()
-            logger.debug(f"Exported audio to WAV: {len(wav_bytes)} bytes")
+            logfire.debug(f"Exported audio to WAV: {len(wav_bytes)} bytes")
             return wav_bytes
         except Exception as e:
-            logger.error(f"Failed to export audio to WAV: {e}")
+            logfire.error(f"Failed to export audio to WAV: {e}")
             raise

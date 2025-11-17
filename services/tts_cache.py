@@ -1,7 +1,6 @@
 """Service for managing cached TTS audio with diskcache."""
 
 import hashlib
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
@@ -9,22 +8,9 @@ from typing import Dict
 import diskcache
 from google import genai
 from google.genai import types
+import logfire
 
-logger = logging.getLogger(__name__)
-
-
-def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
-    """Convert raw PCM audio data to WAV format."""
-    import io
-    import wave
-    
-    wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, 'wb') as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_data)
-    return wav_buffer.getvalue()
+from utils import pcm_to_wav
 
 
 @dataclass
@@ -49,9 +35,9 @@ class TTSCacheService:
                 str(self.cache_dir),
                 size_limit=size_limit_bytes
             )
-            logger.info(f"TTSCacheService initialized with cache_dir={self.cache_dir}, size_limit={self.cache_size_mb}MB")
+            logfire.info(f"TTSCacheService initialized with cache_dir={self.cache_dir}, size_limit={self.cache_size_mb}MB")
         except Exception as e:
-            logger.error(f"Failed to initialize diskcache: {e}")
+            logfire.error(f"Failed to initialize diskcache: {e}")
             self._cache = None
 
     def _generate_cache_key(self, text: str) -> str:
@@ -75,7 +61,7 @@ class TTSCacheService:
         hash_obj = hashlib.sha256(key_material.encode('utf-8'))
         cache_key = hash_obj.hexdigest()
 
-        logger.debug(f"Generated cache key {cache_key[:8]}... for text: {text[:50]}...")
+        logfire.debug(f"Generated cache key {cache_key[:8]}... for text: {text[:50]}...")
         return cache_key
 
     def get_or_generate(self, text: str) -> bytes:
@@ -91,26 +77,26 @@ class TTSCacheService:
             Exception: If TTS generation fails and no cached version exists
         """
         if self._cache is None:
-            logger.warning("Cache not available, generating TTS directly")
+            logfire.warning("Cache not available, generating TTS directly")
             return self._generate_tts(text)
         
         key = self._generate_cache_key(text)
         
         # Check cache first
         if key in self._cache:
-            logger.debug(f"Cache hit for key {key[:8]}...")
+            logfire.debug(f"Cache hit for key {key[:8]}...")
             return self._cache[key]
         
         # Cache miss - generate TTS
-        logger.debug(f"Cache miss, generating TTS for text: {text[:50]}...")
+        logfire.debug(f"Cache miss, generating TTS for text: {text[:50]}...")
         wav_bytes = self._generate_tts(text)
         
         # Store in cache
         try:
             self._cache[key] = wav_bytes
-            logger.debug(f"Cached TTS audio for key {key[:8]}...")
+            logfire.debug(f"Cached TTS audio for key {key[:8]}...")
         except Exception as e:
-            logger.warning(f"Failed to cache TTS audio: {e}")
+            logfire.warning(f"Failed to cache TTS audio: {e}")
         
         return wav_bytes
 
@@ -157,11 +143,11 @@ class TTSCacheService:
                 for part in response.candidates[0].content.parts:
                     if part.inline_data:
                         wav_bytes = pcm_to_wav(part.inline_data.data)
-                        logger.info(f"Generated TTS audio: {len(wav_bytes)} bytes")
+                        logfire.info(f"Generated TTS audio: {len(wav_bytes)} bytes")
                         return wav_bytes
             
             raise Exception("No audio data in TTS response")
             
         except Exception as e:
-            logger.error(f"Error generating TTS: {e}")
+            logfire.error(f"Error generating TTS: {e}")
             raise

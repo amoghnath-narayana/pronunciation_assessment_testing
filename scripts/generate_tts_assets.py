@@ -10,9 +10,7 @@ Usage:
 
 import io
 import json
-import logging
 import sys
-import wave
 from pathlib import Path
 from typing import Dict, List
 
@@ -23,14 +21,12 @@ from google import genai
 from google.genai import types
 from pydub import AudioSegment
 
-from config import APP_CONFIG
+import logfire
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from config import APP_CONFIG
+from utils import pcm_to_wav
+
+logfire.configure()
 
 # Target loudness for normalization (dBFS)
 TARGET_LOUDNESS_DBFS = -20.0
@@ -70,27 +66,6 @@ CATEGORY_PROMPTS = {
 }
 
 
-def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
-    """Convert raw PCM audio data to WAV format.
-    
-    Args:
-        pcm_data: Raw PCM audio bytes
-        sample_rate: Sample rate in Hz (default: 24000)
-        channels: Number of audio channels (default: 1 for mono)
-        sample_width: Sample width in bytes (default: 2 for 16-bit)
-        
-    Returns:
-        bytes: WAV format audio data
-    """
-    wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, 'wb') as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_data)
-    return wav_buffer.getvalue()
-
-
 def generate_tts_audio(client: genai.Client, text: str, voice_name: str, voice_style_prompt: str) -> bytes:
     """Generate TTS audio using Gemini API.
     
@@ -110,7 +85,7 @@ def generate_tts_audio(client: genai.Client, text: str, voice_name: str, voice_s
         # Combine voice style prompt with text
         full_prompt = f"{voice_style_prompt}\n\n{text}"
         
-        logger.info(f"Generating TTS for: {text[:50]}...")
+        logfire.info(f"Generating TTS for: {text[:50]}...")
         
         response = client.models.generate_content(
             model=APP_CONFIG.tts_model_name,
@@ -132,13 +107,13 @@ def generate_tts_audio(client: genai.Client, text: str, voice_name: str, voice_s
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     wav_bytes = pcm_to_wav(part.inline_data.data)
-                    logger.info(f"Generated {len(wav_bytes)} bytes of audio")
+                    logfire.info(f"Generated {len(wav_bytes)} bytes of audio")
                     return wav_bytes
         
         raise Exception("No audio data in TTS response")
         
     except Exception as e:
-        logger.error(f"Error generating TTS: {e}")
+        logfire.error(f"Error generating TTS: {e}")
         raise
 
 
@@ -158,7 +133,7 @@ def normalize_loudness(audio_segment: AudioSegment, target_dbfs: float = TARGET_
     # Apply gain adjustment
     normalized = audio_segment.apply_gain(change_in_dbfs)
     
-    logger.debug(f"Normalized audio from {audio_segment.dBFS:.2f} dBFS to {normalized.dBFS:.2f} dBFS")
+    logfire.debug(f"Normalized audio from {audio_segment.dBFS:.2f} dBFS to {normalized.dBFS:.2f} dBFS")
     
     return normalized
 
@@ -207,10 +182,10 @@ def generate_category_variants(
             relative_path = f"{category}/{variant_filename}"
             variant_paths.append(relative_path)
             
-            logger.info(f"Saved {category} variant {i} to {variant_path}")
+            logfire.info(f"Saved {category} variant {i} to {variant_path}")
             
         except Exception as e:
-            logger.error(f"Failed to generate {category} variant {i}: {e}")
+            logfire.error(f"Failed to generate {category} variant {i}: {e}")
             raise
     
     return variant_paths
@@ -240,13 +215,13 @@ def create_manifest(categories_data: Dict[str, Dict], output_path: Path, voice_n
     with open(output_path, 'w') as f:
         json.dump(manifest, f, indent=2)
     
-    logger.info(f"Created manifest at {output_path}")
+    logfire.info(f"Created manifest at {output_path}")
 
 
 def main():
     """Main execution function."""
-    logger.info("Starting TTS asset generation")
-    logger.info(f"Configuration: model={APP_CONFIG.tts_model_name}, voice={APP_CONFIG.tts_voice_name}")
+    logfire.info("Starting TTS asset generation")
+    logfire.info(f"Configuration: model={APP_CONFIG.tts_model_name}, voice={APP_CONFIG.tts_voice_name}")
     
     # Initialize Gemini client
     client = genai.Client(api_key=APP_CONFIG.gemini_api_key)
@@ -259,10 +234,10 @@ def main():
     categories_data = {}
     
     for category, config in CATEGORY_PROMPTS.items():
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Generating category: {category}")
-        logger.info(f"Intent: {config['intent']}")
-        logger.info(f"{'='*60}")
+        logfire.info(f"\n{'='*60}")
+        logfire.info(f"Generating category: {category}")
+        logfire.info(f"Intent: {config['intent']}")
+        logfire.info(f"{'='*60}")
         
         category_dir = assets_base_dir / category
         
@@ -280,17 +255,17 @@ def main():
             "variants": variant_paths
         }
         
-        logger.info(f"Completed {category}: {len(variant_paths)} variants generated")
+        logfire.info(f"Completed {category}: {len(variant_paths)} variants generated")
     
     # Create manifest.json
     manifest_path = Path(APP_CONFIG.tts_manifest_path)
     create_manifest(categories_data, manifest_path, APP_CONFIG.tts_voice_name)
     
-    logger.info("\n" + "="*60)
-    logger.info("TTS asset generation complete!")
-    logger.info(f"Assets saved to: {assets_base_dir}")
-    logger.info(f"Manifest saved to: {manifest_path}")
-    logger.info("="*60)
+    logfire.info("\n" + "="*60)
+    logfire.info("TTS asset generation complete!")
+    logfire.info(f"Assets saved to: {assets_base_dir}")
+    logfire.info(f"Manifest saved to: {manifest_path}")
+    logfire.info("="*60)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,13 @@
 """Service for loading and serving pre-generated TTS audio clips."""
 
 import json
-import logging
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
+import logfire
 from pydub import AudioSegment
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,9 +26,9 @@ class TTSAssetLoader:
             self._manifest = self._load_manifest()
             self._preload_assets()
             self._loaded_successfully = True
-            logger.info(f"TTSAssetLoader initialized successfully with {len(self._audio_cache)} categories")
+            logfire.info(f"TTSAssetLoader initialized successfully with {len(self._audio_cache)} categories")
         except Exception as e:
-            logger.error(f"Failed to initialize TTSAssetLoader: {e}")
+            logfire.error(f"Failed to initialize TTSAssetLoader: {e}")
             self._loaded_successfully = False
 
     def _load_manifest(self) -> Dict:
@@ -66,9 +64,9 @@ class TTSAssetLoader:
                 raise ValueError(f"Category '{category_name}' variants must be a list")
             
             if len(category_data['variants']) == 0:
-                logger.warning(f"Category '{category_name}' has no variants")
+                logfire.warning(f"Category '{category_name}' has no variants")
         
-        logger.info(f"Loaded manifest with {len(manifest['categories'])} categories")
+        logfire.info(f"Loaded manifest with {len(manifest['categories'])} categories")
         return manifest
 
     def _preload_assets(self):
@@ -78,7 +76,7 @@ class TTSAssetLoader:
         Skips corrupted or missing files with error logging.
         """
         if not self._manifest or 'categories' not in self._manifest:
-            logger.error("Cannot preload assets: manifest not loaded")
+            logfire.error("Cannot preload assets: manifest not loaded")
             return
         
         for category_name, category_data in self._manifest['categories'].items():
@@ -89,23 +87,23 @@ class TTSAssetLoader:
                 
                 try:
                     if not full_path.exists():
-                        logger.error(f"Asset file not found: {full_path}")
+                        logfire.error(f"Asset file not found: {full_path}")
                         continue
                     
                     # Load audio file (supports WAV, MP3, and other formats pydub handles)
                     audio_segment = AudioSegment.from_file(str(full_path))
                     loaded_variants.append(audio_segment)
-                    logger.debug(f"Loaded asset: {variant_path}")
+                    logfire.debug(f"Loaded asset: {variant_path}")
                     
                 except Exception as e:
-                    logger.error(f"Failed to load asset {full_path}: {e}")
+                    logfire.error(f"Failed to load asset {full_path}: {e}")
                     continue
             
             if loaded_variants:
                 self._audio_cache[category_name] = loaded_variants
-                logger.info(f"Loaded {len(loaded_variants)} variants for category '{category_name}'")
+                logfire.info(f"Loaded {len(loaded_variants)} variants for category '{category_name}'")
             else:
-                logger.warning(f"No valid variants loaded for category '{category_name}'")
+                logfire.warning(f"No valid variants loaded for category '{category_name}'")
 
     def pick(self, category: str) -> AudioSegment:
         """Return random variant for category.
@@ -127,7 +125,7 @@ class TTSAssetLoader:
             raise ValueError(f"Category '{category}' has no available variants")
         
         selected = random.choice(variants)
-        logger.debug(f"Selected random variant from category '{category}' ({len(variants)} available)")
+        logfire.debug(f"Selected random variant from category '{category}' ({len(variants)} available)")
         return selected
 
     def is_available(self) -> bool:
