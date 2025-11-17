@@ -14,7 +14,8 @@ from utils import create_practice_sentence_display_box
 from services.gemini_service import GeminiAssessmentService
 from ui.components import render_assessment
 
-logfire.configure()
+# Configure logfire for local logging only (no cloud authentication required)
+logfire.configure(send_to_logfire=False, inspect_arguments=False)
 
 
 def initialize_session_state():

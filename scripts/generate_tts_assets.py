@@ -26,7 +26,8 @@ import logfire
 from config import APP_CONFIG
 from utils import pcm_to_wav
 
-logfire.configure()
+# Configure logfire for local logging only (no cloud authentication required)
+logfire.configure(send_to_logfire=False, inspect_arguments=False)
 
 # Target loudness for normalization (dBFS)
 TARGET_LOUDNESS_DBFS = -20.0
