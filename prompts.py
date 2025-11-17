@@ -32,17 +32,11 @@ EXAMPLES:
 Input: I have a cat
 {{"specific_errors": []}}
 
-Input: We have a red van
-{{"specific_errors": [{{"word": "I", "issue": "You said 'we' instead of 'I'.", "suggestion": "The first word should be 'I'.", "severity": "critical"}}]}}
-
 Input: I has a red bike
 {{"specific_errors": [{{"word": "have", "issue": "You said 'has' instead of 'have'.", "suggestion": "Say 'I have', not 'I has'.", "severity": "critical"}}, {{"word": "van", "issue": "You said 'bike' instead of 'van'.", "suggestion": "The word is 'van'.", "severity": "critical"}}]}}
 
 Input: I have
 {{"specific_errors": [{{"word": "sentence", "issue": "You only said part of the sentence.", "suggestion": "Try saying the whole sentence.", "severity": "minor"}}]}}
-
-Input: Ihavearedvan
-{{"specific_errors": [{{"word": "pacing", "issue": "Your words are rushing together.", "suggestion": "Say each word slowly: I... have... a... red... van.", "severity": "minor"}}]}}
 
 Assessment:
 {{
