@@ -134,7 +134,15 @@ class GeminiAssessmentService:
                     thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
-            return AssessmentResult.model_validate_json(response.text)
+            result = AssessmentResult.model_validate_json(response.text)
+
+            # Filter errors to only include words from expected sentence
+            expected_words = set(expected_sentence_text.lower().split())
+            result.specific_errors = [
+                e for e in result.specific_errors
+                if e.word.lower() in expected_words or e.word == "sentence"
+            ]
+            return result
 
         except (ValueError, ValidationError) as e:
             st.error(f"Invalid assessment response: {e}")

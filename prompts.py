@@ -25,7 +25,7 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
     word_count = len(expected_sentence_text.split())
     min_duration = word_count * 0.5
 
-    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed)
+    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed, word = expected word only)
 
 EXAMPLES:
 
@@ -49,7 +49,7 @@ def build_tts_narration_prompt(assessment_result) -> str:
         return "Awesome! Perfect reading!"
 
     error_details = " ".join(
-        f"For the word '{e.word}': {e.issue} {e.suggestion}"
+        f"{e.issue} {e.suggestion}"
         for e in assessment_result.specific_errors
     )
     return f"Good try! {error_details}"
