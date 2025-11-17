@@ -57,8 +57,8 @@ class TTSNarrationComposer:
             for idx, error in enumerate(assessment_result.specific_errors):
                 try:
                     # Build error text for TTS
-                    error_text = f"For the word '{error.word}': {error.issue} {error.suggestion}"
-                    
+                    error_text = f"{error.issue} {error.suggestion}"
+
                     # Get cached or generate TTS audio
                     error_audio_bytes = self.cache_service.get_or_generate(error_text)
                     

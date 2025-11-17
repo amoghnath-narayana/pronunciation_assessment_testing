@@ -25,7 +25,9 @@ def build_assessment_prompt(expected_sentence_text: str) -> str:
     word_count = len(expected_sentence_text.split())
     min_duration = word_count * 0.5
 
-    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed, word = expected word only)
+    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed)
+
+NOTE: "word" field must be the expected word from the sentence, NOT what user said.
 
 EXAMPLES:
 
@@ -33,10 +35,10 @@ Input: I have a cat
 {{"specific_errors": []}}
 
 Input: I has a red bike
-{{"specific_errors": [{{"word": "have", "issue": "You said 'has' instead of 'have'.", "suggestion": "Say 'I have', not 'I has'.", "severity": "critical"}}, {{"word": "van", "issue": "You said 'bike' instead of 'van'.", "suggestion": "The word is 'van'.", "severity": "critical"}}]}}
+{{"specific_errors": [{{"word": "have", "issue": "You said 'has'.", "suggestion": "Try 'have'.", "severity": "critical"}}, {{"word": "van", "issue": "You said 'bike'.", "suggestion": "Say 'van'.", "severity": "critical"}}]}}
 
 Input: I have
-{{"specific_errors": [{{"word": "sentence", "issue": "You only said part of the sentence.", "suggestion": "Try saying the whole sentence.", "severity": "minor"}}]}}
+{{"specific_errors": [{{"word": "sentence", "issue": "Only said part of sentence.", "suggestion": "Say the whole sentence.", "severity": "minor"}}]}}
 
 Assessment:
 {{

@@ -11,9 +11,10 @@ install:
     uv pip install -r requirements.txt
 
 # Sync dependencies (install/update to match requirements.txt exactly)
+# Note: This uses 'install' instead of 'sync' to preserve transitive dependencies
 sync:
     @test -d .venv || uv venv
-    uv pip sync requirements.txt
+    uv pip install -r requirements.txt
 
 # Start the Streamlit application
 run:
@@ -84,3 +85,25 @@ dev:
 check-env:
     @test -f .env || (echo "Error: .env file not found!" && exit 1)
     @echo "YES - .env file exists"
+
+# Show TTS cache statistics
+cache-stats:
+    @echo "TTS Cache Statistics:"
+    @echo "===================="
+    @if [ -f "assets/tts/cache/cache.db" ]; then \
+        du -sh assets/tts/cache 2>/dev/null || echo "Cache directory not found"; \
+        echo "Database size: $$(du -h assets/tts/cache/cache.db 2>/dev/null | cut -f1)"; \
+        echo "Total files: $$(find assets/tts/cache -type f | wc -l | tr -d ' ')"; \
+    else \
+        echo "Cache not initialized"; \
+    fi
+
+# Clear TTS cache
+clear-cache:
+    @echo "Clearing TTS cache..."
+    @rm -rf assets/tts/cache/*
+    @echo "TTS cache cleared!"
+
+# Clear all caches (TTS + Python cache)
+clear-all: clear-cache clean
+    @echo "All caches cleared!"
