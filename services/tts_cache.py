@@ -56,21 +56,25 @@ class TTSCacheService:
 
     def _generate_cache_key(self, text: str) -> str:
         """Create hash key from text + voice config.
-        
+
         Args:
             text: The narration text to generate cache key for
-            
+
         Returns:
-            str: SHA256 hash of text + voice_name
+            str: SHA256 hash of normalized text + voice_name
         """
+        # Normalize text to improve cache hit rate
+        # Strip whitespace and ensure consistent formatting
+        normalized_text = text.strip()
+
         # Combine text with voice_name to ensure different voices get different cache entries
         voice_name = self.tts_config.get('voice_name', '')
-        key_material = f"{text}|{voice_name}"
-        
+        key_material = f"{normalized_text}|{voice_name}"
+
         # Generate SHA256 hash
         hash_obj = hashlib.sha256(key_material.encode('utf-8'))
         cache_key = hash_obj.hexdigest()
-        
+
         logger.debug(f"Generated cache key {cache_key[:8]}... for text: {text[:50]}...")
         return cache_key
 

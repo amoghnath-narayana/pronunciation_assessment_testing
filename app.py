@@ -1,5 +1,8 @@
 """Friendly pronunciation assessment for K1 and K2 learners."""
 
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
 import streamlit as st
 import streamlit.components.v1 as components
 
