@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import io
-import wave
 
 import streamlit as st
+from pydub import AudioSegment
 
 
 def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2) -> bytes:
-    """Convert raw PCM audio data to WAV format.
+    """Convert raw PCM audio data to WAV format using pydub.
     
     Args:
         pcm_data: Raw PCM audio bytes
@@ -20,13 +20,18 @@ def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sam
     Returns:
         bytes: WAV format audio data
     """
-    wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, 'wb') as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_data)
-    return wav_buffer.getvalue()
+    # Create AudioSegment from raw PCM data
+    audio = AudioSegment(
+        data=pcm_data,
+        sample_width=sample_width,
+        frame_rate=sample_rate,
+        channels=channels
+    )
+    
+    # Export to WAV format
+    buffer = io.BytesIO()
+    audio.export(buffer, format="wav")
+    return buffer.getvalue()
 
 
 def create_practice_sentence_display_box(sentence_text: str) -> None:
