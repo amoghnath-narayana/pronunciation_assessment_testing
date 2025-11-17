@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "voice_name": "Puck",
+  "categories": {
+    "perfect_intro": {
+      "intent": "Celebration for error-free reading",
+      "variants": [
+        "perfect_intro/variant_1.wav",
+        "perfect_intro/variant_2.wav",
+        "perfect_intro/variant_3.wav",
+        "perfect_intro/variant_4.wav"
+      ]
+    },
+    "needs_work_intro": {
+      "intent": "Encouraging lead-in before corrections",
+      "variants": [
+        "needs_work_intro/variant_1.wav",
+        "needs_work_intro/variant_2.wav",
+        "needs_work_intro/variant_3.wav",
+        "needs_work_intro/variant_4.wav"
+      ]
+    },
+    "closing_cheer": {
+      "intent": "Positive ending after corrections",
+      "variants": [
+        "closing_cheer/variant_1.wav",
+        "closing_cheer/variant_2.wav",
+        "closing_cheer/variant_3.wav",
+        "closing_cheer/variant_4.wav"
+      ]
+    }
+  }
+}

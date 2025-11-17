@@ -16,5 +16,12 @@ class AppConfig(BaseSettings):
     tts_voice_name: str
     tts_voice_style_prompt: str
 
+    # TTS Optimization
+    tts_assets_dir: str = "assets/tts"
+    tts_manifest_path: str = "assets/tts/manifest.json"
+    tts_cache_dir: str = "assets/tts/cache"
+    tts_cache_size_mb: int = 500
+    tts_enable_optimization: bool = True
+
 
 APP_CONFIG = AppConfig()
