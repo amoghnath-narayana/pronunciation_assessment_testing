@@ -75,7 +75,7 @@ async def assess_pronunciation(
             audio_data_bytes=audio_data, expected_sentence_text=expected_text
         )
 
-        logfire.info(f"Assessment completed. Overall score: {result.overall_score}")
+        logfire.info(f"Assessment completed. Found {len(result.specific_errors)} errors")
 
         return AssessmentResponse(assessment=result)
 
