@@ -1,4 +1,4 @@
-# Pronunciation Coach - Just Commands
+# Pronunciation Assessment API - Just Commands
 # Requires: just, uv
 
 # Default recipe to display available commands
@@ -16,13 +16,22 @@ sync:
     @test -d .venv || uv venv
     uv pip install -r requirements.txt
 
-# Start the Streamlit application
+# Start the FastAPI server (development mode with auto-reload)
 run:
-    uv run streamlit run app.py
+    @echo "Starting API server at http://localhost:8000"
+    @echo "API docs available at http://localhost:8000/docs"
+    uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
-# Start the Streamlit application with custom port
+# Start the FastAPI server with custom port
 run-port PORT:
-    uv run streamlit run app.py --server.port {{PORT}}
+    @echo "Starting API server at http://localhost:{{PORT}}"
+    @echo "API docs available at http://localhost:{{PORT}}/docs"
+    uv run uvicorn main:app --reload --host 0.0.0.0 --port {{PORT}}
+
+# Start in production mode (no reload)
+run-prod:
+    @echo "Starting API server in production mode at http://localhost:8000"
+    uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 
 # Clear Python cache files and directories
 clean:
@@ -73,13 +82,16 @@ update:
 # Force update all packages to latest versions and freeze to requirements.txt
 update-hard:
     @test -d .venv || uv venv
-    uv pip install --upgrade streamlit google-generativeai python-dotenv ruff
+    uv pip install --upgrade fastapi uvicorn google-generativeai python-dotenv ruff pydantic
     uv pip freeze > requirements.txt
     @echo "All packages force-updated to latest versions and frozen to requirements.txt"
 
 # Run the app in development mode with auto-reload
 dev:
-    uv run streamlit run app.py --server.runOnSave true
+    @echo "Starting API server in dev mode at http://localhost:8000"
+    @echo "API docs: http://localhost:8000/docs"
+    @echo "Logfire enabled for local logging"
+    uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000 --log-level debug
 
 # Check if .env file exists
 check-env:

@@ -4,13 +4,13 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 
-import streamlit as st
 from google import genai
 from google.genai import types
 import logfire
 from pydantic import ValidationError
 
 from config import AppConfig
+from exceptions import AudioUploadError, InvalidAssessmentResponseError
 from models.assessment_models import AssessmentResult, get_gemini_response_schema
 from prompts import SYSTEM_PROMPT, build_assessment_prompt, build_tts_narration_prompt
 from utils import pcm_to_wav, temp_audio_file
@@ -29,7 +29,6 @@ class GeminiAssessmentService:
                 logfire.info("TTS optimization enabled with composer")
             except Exception as e:
                 logfire.warning(f"TTS optimization unavailable: {e}. Using fallback.")
-                st.warning(f"TTS optimization unavailable: {e}. Using fallback.")
                 self._composer = None
         else:
             logfire.info("TTS optimization disabled, using legacy TTS")
@@ -94,12 +93,26 @@ class GeminiAssessmentService:
         with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
             return self.client.files.upload(file=temp_path)
 
-    def assess_pronunciation(self, audio_data_bytes: bytes, expected_sentence_text: str):
+    def assess_pronunciation(self, audio_data_bytes: bytes, expected_sentence_text: str) -> AssessmentResult:
+        """Assess pronunciation of audio against expected text.
+
+        Args:
+            audio_data_bytes: Audio data to assess
+            expected_sentence_text: Expected sentence text
+
+        Returns:
+            AssessmentResult: Assessment result with scores and feedback
+
+        Raises:
+            AudioUploadError: If audio upload fails
+            InvalidAssessmentResponseError: If response validation fails
+            Exception: If API call fails
+        """
         try:
             uploaded_file = self._upload_audio_file(audio_data_bytes)
             if not uploaded_file:
-                st.error("Failed to upload audio file")
-                return None
+                logfire.error("Failed to upload audio file")
+                raise AudioUploadError("Failed to upload audio file to Gemini API")
 
             response = self.client.models.generate_content(
                 model=self.config.model_name,
@@ -121,11 +134,14 @@ class GeminiAssessmentService:
 
             return result
 
-        except (ValueError, ValidationError) as e:
-            st.error(f"Invalid assessment response: {e}")
+        except ValidationError as e:
+            logfire.error(f"Invalid assessment response: {e}")
+            raise InvalidAssessmentResponseError(f"Invalid assessment response: {e}") from e
+        except AudioUploadError:
+            raise
         except Exception as e:
-            st.error(f"Error during assessment: {e}")
-        return None
+            logfire.error(f"Error during assessment: {e}")
+            raise
 
     def generate_tts_narration(self, assessment_result: AssessmentResult) -> bytes:
         """Generate TTS audio from assessment result.
@@ -146,8 +162,7 @@ class GeminiAssessmentService:
                 return self._composer.compose(assessment_result)
             except Exception as e:
                 logfire.warning(f"TTS composition failed: {e}. Using fallback.")
-                st.warning(f"TTS composition failed: {e}. Using fallback.")
-        
+
         # Fallback to legacy implementation
         logfire.debug("Using legacy TTS generation")
         return self._generate_tts_legacy(assessment_result)
@@ -189,5 +204,4 @@ class GeminiAssessmentService:
 
         except Exception as e:
             logfire.error(f"Error generating TTS: {e}")
-            st.error(f"Error generating TTS: {e}")
-        return None
+            return None

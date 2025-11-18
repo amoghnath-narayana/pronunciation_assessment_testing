@@ -1,13 +1,12 @@
-altair==5.5.0
+# Core dependencies
 annotated-types==0.7.0
 attrs==25.4.0
-blinker==1.9.0
 cachetools==6.2.1
 certifi==2025.11.12
 charset-normalizer==3.4.4
 click==8.3.0
-gitdb==4.0.12
-gitpython==3.1.45
+
+# Google AI / Gemini
 google-ai-generativelanguage==0.6.15
 google-api-core==2.28.1
 google-api-python-client==2.187.0
@@ -17,47 +16,69 @@ google-genai==1.50.0
 googleapis-common-protos==1.72.0
 grpcio==1.76.0
 grpcio-status==1.71.2
+
+# HTTP and networking
 httplib2==0.31.0
 idna==3.11
+requests==2.32.5
+urllib3==2.5.0
+
+# Templating and validation
 jinja2==3.1.6
 jsonschema==4.25.1
 jsonschema-specifications==2025.9.1
-logfire==4.14.2
 markupsafe==3.0.3
-narwhals==2.11.0
+
+# Logging and monitoring
+logfire==4.14.2
+
+# Data processing
 numpy==2.3.4
 packaging==25.0
 pandas==2.3.3
 pillow==12.0.0
+
+# Protocol buffers
 proto-plus==1.26.1
 protobuf==5.29.5
 pyarrow==21.0.0
+
+# Auth and security
 pyasn1==0.6.1
 pyasn1-modules==0.4.2
+rsa==4.9.1
+
+# Pydantic (data validation)
 pydantic==2.12.4
 pydantic-core==2.41.5
-pydeck==0.9.1
+
+# Utilities
 pyparsing==3.2.5
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
 pytz==2025.2
 referencing==0.37.0
-requests==2.32.5
 rpds-py==0.28.0
-rsa==4.9.1
-ruff==0.14.4
 six==1.17.0
-smmap==5.0.2
-streamlit==1.51.0
 tenacity==9.1.2
 toml==0.10.2
-tornado==6.5.2
 tqdm==4.67.1
 typing-extensions==4.15.0
 typing-inspection==0.4.2
 tzdata==2025.2
 uritemplate==4.2.0
-urllib3==2.5.0
+
+# Audio processing
 pydub==0.25.1
-diskcache==5.6.3
 audioop-lts==0.2.2
+
+# Caching
+diskcache==5.6.3
+
+# Development tools
+ruff==0.14.4
+
+# FastAPI and server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
