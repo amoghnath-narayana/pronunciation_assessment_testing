@@ -101,13 +101,15 @@ class GeminiAssessmentService:
             AudioUploadError: If audio upload fails
         """
         try:
+            import time
             logfire.debug(f"Uploading {len(audio_data_bytes)} bytes of WAV audio to Gemini")
 
             with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
                 return self.client.files.upload(
                     file=temp_path,
                     config=types.UploadFileConfig(
-                        mime_type=self.config.recorded_audio_mime_type
+                        mime_type=self.config.recorded_audio_mime_type,
+                        display_name=f"assessment_{int(time.time())}"
                     )
                 )
 
@@ -138,9 +140,21 @@ class GeminiAssessmentService:
 
             # Gemini 3 thinking is ALWAYS ON (defaults to HIGH if not specified)
             # We explicitly set LOW for optimal latency while maintaining quality
+            # Media resolution set to MEDIUM for optimal balance of quality and token usage
             response = self.client.models.generate_content(
                 model=self.config.model_name,
-                contents=[build_assessment_prompt(expected_sentence_text), uploaded_file],
+                contents=[
+                    build_assessment_prompt(expected_sentence_text),
+                    types.Part(
+                        file_data=types.FileData(
+                            file_uri=uploaded_file.uri,
+                            mime_type=uploaded_file.mime_type
+                        ),
+                        media_resolution=types.PartMediaResolution(
+                            level=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
+                        ),
+                    )
+                ],
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     temperature=self.config.assessment_temperature,
@@ -151,6 +165,15 @@ class GeminiAssessmentService:
                 ),
             )
             result = AssessmentResult.model_validate_json(response.text)
+
+            # Log token usage for monitoring and optimization
+            logfire.info(
+                "Assessment completed",
+                thinking_tokens=response.usage_metadata.thoughts_token_count,
+                prompt_tokens=response.usage_metadata.prompt_token_count,
+                output_tokens=response.usage_metadata.candidates_token_count,
+                total_tokens=response.usage_metadata.total_token_count,
+            )
 
             # Debug: Log errors from Gemini
             if result.specific_errors:

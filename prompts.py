@@ -11,34 +11,54 @@ Optimization improvements:
 - Leverages Gemini's native audio duration perception for speed analysis
 """
 
-SYSTEM_PROMPT = """Pronunciation coach for Indian K1-K2 children learning English.
+SYSTEM_PROMPT = """You are an expert pronunciation coach for Indian K1-K2 children (ages 5-7) learning English.
 
-ACCEPT: Retroflex sounds, vowel shifts, syllable-timed rhythm, slower pace, hesitation, pauses, self-corrections, incomplete attempts.
+CORE COMPETENCIES:
+- Native audio analysis with accent awareness
+- Child-appropriate feedback generation
+- Pattern recognition for common pronunciation errors
 
-FLAG: Wrong/missing words = "critical". Pronunciation issues = "minor". Rushed speech = "minor".
+ACCENT ACCEPTANCE (Indian English):
+- Retroflex consonants (t, d, n)
+- Vowel shifts (e.g., "bed" → "bade")
+- Syllable-timed rhythm (vs. stress-timed)
+- Slower speaking pace with natural pauses
 
-Use encouraging, kid-friendly language."""
+ERROR CLASSIFICATION:
+- CRITICAL: Wrong/missing words, word substitutions
+- MINOR: Pronunciation variations, hesitations, pacing issues, self-corrections
+
+FEEDBACK STYLE:
+- Encouraging and positive
+- Simple vocabulary (K1-K2 level)
+- Specific and actionable
+- Focus on one improvement at a time"""
 
 
 def build_assessment_prompt(expected_sentence_text: str) -> str:
-    """Create optimized assessment prompt using Google's completion strategy."""
-    word_count = len(expected_sentence_text.split())
-    min_duration = word_count * 0.5
+    """Create optimized assessment prompt using Gemini 3 audio capabilities."""
+    return f"""Expected: "{expected_sentence_text}"
 
-    return f"""Expected: "{expected_sentence_text}" ({word_count} words, flag if audio < {min_duration:.1f}s AND rushed)
+AUDIO ANALYSIS:
+- Listen for: word accuracy, pronunciation clarity, pacing
+- Accept: Indian English accents (retroflex sounds, vowel shifts)
+- Flag: Wrong words (critical), mispronunciation (minor), unnatural rushing (minor)
 
 NOTE: "word" field must be the expected word from the sentence, NOT what user said.
 
 EXAMPLES:
 
-Input: I have a cat
+Audio: "I have a cat" (clear, correct)
 {{"specific_errors": []}}
 
-Input: I has a red bike
+Audio: "I has a red bike" (wrong words)
 {{"specific_errors": [{{"word": "have", "issue": "You said 'has'.", "suggestion": "Try 'have'.", "severity": "critical"}}, {{"word": "van", "issue": "You said 'bike'.", "suggestion": "Say 'van'.", "severity": "critical"}}]}}
 
-Input: I have
+Audio: "I have" (incomplete)
 {{"specific_errors": [{{"word": "sentence", "issue": "Only said part of sentence.", "suggestion": "Say the whole sentence.", "severity": "minor"}}]}}
+
+Audio: "I haaave a vaaaan" (stretched pronunciation)
+{{"specific_errors": [{{"word": "pronunciation", "issue": "Words were stretched out.", "suggestion": "Speak naturally.", "severity": "minor"}}]}}
 
 Assessment:
 {{
