@@ -125,22 +125,42 @@
             try {
               const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
 
-              const formData = new FormData();
-              formData.append("audio_file", audioBlob, "recording.webm");
-              formData.append("expected_text", expectedSentence);
+              // Create separate FormData for each request
+              const formData1 = new FormData();
+              formData1.append("audio_file", audioBlob, "recording.webm");
+              formData1.append("expected_text", expectedSentence);
 
-              const response = await fetch("/api/v1/assess", {
-                method: "POST",
-                body: formData,
-              });
+              const formData2 = new FormData();
+              formData2.append("audio_file", audioBlob, "recording.webm");
+              formData2.append("expected_text", expectedSentence);
 
-              if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API error ${response.status}: ${errorText}`);
+              // Fetch both text assessment and TTS audio in parallel
+              const [assessmentResponse, ttsResponse] = await Promise.all([
+                fetch("/api/v1/assess", {
+                  method: "POST",
+                  body: formData1,
+                }),
+                fetch("/api/v1/assess/tts", {
+                  method: "POST",
+                  body: formData2,
+                }),
+              ]);
+
+              if (!assessmentResponse.ok) {
+                const errorText = await assessmentResponse.text();
+                throw new Error(`API error ${assessmentResponse.status}: ${errorText}`);
               }
 
-              const data = await response.json();
-              this.displayResults(data.assessment);
+              const data = await assessmentResponse.json();
+
+              // Get TTS audio if available
+              let audioUrl = null;
+              if (ttsResponse.ok) {
+                const audioBlob = await ttsResponse.blob();
+                audioUrl = URL.createObjectURL(audioBlob);
+              }
+
+              this.displayResults(data.assessment, audioUrl);
             } catch (error) {
               console.error("Error processing assessment:", error);
               alert(`Failed to assess pronunciation: ${error.message}`);
@@ -160,7 +180,7 @@
             this.updateStatus("Ready to practice!", "info-circle");
           },
 
-          displayResults(assessment) {
+          displayResults(assessment, audioUrl = null) {
             const errors = assessment.specific_errors || [];
 
             let animation = "winner";
@@ -215,6 +235,19 @@
 
             this.resultContent = html;
             this.results = true;
+
+            // Play audio feedback if available
+            if (audioUrl) {
+              const audio = new Audio(audioUrl);
+              audio.play().catch((error) => {
+                console.error("Error playing audio feedback:", error);
+              });
+
+              // Clean up audio URL after playing
+              audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+              };
+            }
 
             setTimeout(() => {
               this.currentAnimation = "idle";
