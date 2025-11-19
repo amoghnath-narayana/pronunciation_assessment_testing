@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import logfire
 
-from api.routers import assessment, health
+from api.routers.assessment import router as assessment_router
+from api.routers.health import router as health_router
 from constants import APIConfig
 from exceptions import AssessmentError
 
@@ -79,8 +80,8 @@ async def assessment_error_handler(request: Request, exc: AssessmentError):
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # Include routers
-app.include_router(health.router, prefix="/api/v1")
-app.include_router(assessment.router)
+app.include_router(health_router, prefix="/api/v1")
+app.include_router(assessment_router)
 
 
 # Root endpoint - Serve index.html
