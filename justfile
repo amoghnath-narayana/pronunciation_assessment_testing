@@ -100,15 +100,17 @@ check-env:
 
 # Show TTS cache statistics
 cache-stats:
-    @echo "TTS Cache Statistics:"
+    @echo ""
+    @echo "TTS Cache Statistics"
     @echo "===================="
     @if [ -f "assets/tts/cache/cache.db" ]; then \
-        du -sh assets/tts/cache 2>/dev/null || echo "Cache directory not found"; \
-        echo "Database size: $$(du -h assets/tts/cache/cache.db 2>/dev/null | cut -f1)"; \
-        echo "Total files: $$(find assets/tts/cache -type f | wc -l | tr -d ' ')"; \
+        printf "  Cache Directory: "; du -sh assets/tts/cache 2>/dev/null | cut -f1; \
+        printf "  Database File:   "; du -h assets/tts/cache/cache.db 2>/dev/null | cut -f1; \
+        printf "  Total Files:     "; find assets/tts/cache -type f | wc -l | tr -d ' '; \
     else \
-        echo "Cache not initialized"; \
+        echo "  Cache not initialized"; \
     fi
+    @echo ""
 
 # Clear TTS cache
 clear-cache:

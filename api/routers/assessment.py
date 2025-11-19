@@ -96,7 +96,7 @@ async def assess_pronunciation(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     except Exception as e:
-        logfire.error(f"Unexpected error during assessment: {e}")
+        logfire.exception(f"Unexpected error during assessment: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e
 
 
@@ -183,5 +183,5 @@ async def assess_pronunciation_with_tts(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     except Exception as e:
-        logfire.error(f"Unexpected error during assessment + TTS: {e}")
+        logfire.exception(f"Unexpected error during assessment + TTS: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") from e

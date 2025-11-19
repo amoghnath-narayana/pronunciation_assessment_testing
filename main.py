@@ -71,7 +71,7 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(AssessmentError)
 async def assessment_error_handler(request: Request, exc: AssessmentError):
     """Handle custom assessment errors."""
-    logfire.error(f"Assessment error: {exc.message}", details=exc.details)
+    logfire.exception(f"Assessment error: {exc.message}", details=exc.details)
     return JSONResponse(
         status_code=500,
         content={
@@ -82,8 +82,25 @@ async def assessment_error_handler(request: Request, exc: AssessmentError):
     )
 
 
+# Global exception handler for unhandled exceptions
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions."""
+    logfire.exception(
+        f"Unhandled exception in {request.method} {request.url.path}: {exc}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "InternalServerError",
+            "message": "An unexpected error occurred",
+        },
+    )
+
+
 # Mount static files
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
 app.include_router(health_router, prefix="/api/v1")

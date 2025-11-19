@@ -1,387 +1,75 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pronunciation Practice</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>"
-    />
 
-    <!-- Pico CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pronunciation Practice</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
 
-    <!-- Shoelace CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css" />
+  <!-- Pico CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
 
-    <!-- Shoelace Components (autoloader) -->
-    <script
-      type="module"
-      src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"
-    ></script>
+  <!-- Shoelace CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css" />
 
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/style.css" />
 
-    <!-- dotLottie Player -->
-    <script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
+  <!-- Shoelace Components (autoloader) -->
+  <script type="module"
+    src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
 
-    <!-- Define Alpine component BEFORE Alpine loads -->
-    <script>
-      function pronunciationApp() {
-        return {
-          state: "idle",
-          currentAnimation: "idle",
-          statusHtml: '<sl-icon name="info-circle"></sl-icon> Ready to practice!',
-          buttonIcon: "mic",
-          buttonVariant: "primary",
-          expectedText: "The cat is on the mat",
-          results: false,
-          resultTitle: "",
-          resultContent: "",
-          mediaRecorder: null,
-          audioChunks: [],
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
 
-          animations: {
-            idle: "/assets/mascot/idle/idle.lottie",
-            greetings: "/assets/mascot/greetings/greetings.lottie",
-            happy: "/assets/mascot/happy/happy_minified.lottie",
-            cheerful: "/assets/mascot/cheerful/cheerful.lottie",
-            winner: "/assets/mascot/winner/winner.lottie",
-            upset: "/assets/mascot/upset/upset_minified.lottie",
-          },
+  <!-- dotLottie Player -->
+  <script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
 
-          init() {
-            this.preloadAnimations();
-          },
+  <!-- App Logic -->
+  <script src="/static/app.js"></script>
+</head>
 
-          async toggleRecording() {
-            if (this.state === "idle") {
-              await this.startRecording();
-            } else if (this.state === "recording") {
-              await this.stopRecording();
-            }
-          },
+<body>
+  <main class="container" x-data="pronunciationApp">
+    <!-- Mascot Animation -->
+    <div class="mascot-container">
+      <dotlottie-player :src="animations[currentAnimation]" background="transparent" speed="1" loop autoplay>
+      </dotlottie-player>
+    </div>
 
-          async startRecording() {
-            this.results = false;
-            this.audioChunks = [];
-            this.state = "recording";
-            this.buttonIcon = "stop-circle";
-            this.buttonVariant = "danger";
-            this.currentAnimation = "greetings";
-            this.updateStatus("Recording... Speak clearly!", "mic");
+    <div class="status-text" x-html="statusHtml"></div>
 
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-              this.mediaRecorder = new MediaRecorder(stream);
+    <!-- Expected Text Input -->
+    <label>
+      Expected Sentence:
+      <input type="text" x-model="expectedText" placeholder="Type the sentence you want to practice..." />
+    </label>
 
-              this.mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                  this.audioChunks.push(event.data);
-                }
-              };
+    <!-- Circular Record Button -->
+    <div class="record-button-container">
+      <sl-button @click="toggleRecording()" :variant="buttonVariant" :pulse="isRecording" :loading="isProcessing"
+        size="large" circle style="width: 80px; height: 80px">
+        <sl-icon :name="buttonIcon" style="font-size: 1.5rem"></sl-icon>
+      </sl-button>
+    </div>
 
-              this.mediaRecorder.onstop = async () => {
-                stream.getTracks().forEach((track) => track.stop());
-                await this.processRecording();
-              };
+    <!-- Results -->
+    <article class="result-box" x-show="results" x-transition>
+      <h3 x-text="resultTitle"></h3>
+      <p x-text="resultMessage"></p>
 
-              this.mediaRecorder.start();
-            } catch (error) {
-              console.error("Error accessing microphone:", error);
-              alert("Could not access microphone. Please check permissions.");
-              this.resetState();
-            }
-          },
+      <ul class="error-list" x-show="errors.length > 0">
+        <template x-for="error in errors">
+          <li class="error-item" :class="error.severity === 'critical' ? 'error-critical' : 'error-minor'">
+            <strong x-text="error.word"></strong>: <span x-text="error.issue"></span>
+            <br><small><em>Suggestion: <span x-text="error.suggestion"></span></em></small>
+          </li>
+        </template>
+      </ul>
+    </article>
+  </main>
+</body>
 
-          async stopRecording() {
-            if (this.mediaRecorder && this.mediaRecorder.state === "recording") {
-              this.state = "processing";
-              this.buttonIcon = "loader";
-              this.buttonVariant = "warning";
-              this.currentAnimation = "idle";
-              this.updateStatus("Processing your pronunciation...", "loader");
-              this.mediaRecorder.stop();
-            }
-          },
-
-          async processRecording() {
-            const expectedSentence = this.expectedText.trim();
-
-            if (!expectedSentence) {
-              alert("Please enter an expected sentence first!");
-              this.resetState();
-              return;
-            }
-
-            if (this.audioChunks.length === 0) {
-              alert("No audio recorded. Please try again and speak clearly.");
-              this.resetState();
-              return;
-            }
-
-            try {
-              const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
-
-              // Create separate FormData for each request
-              const formData1 = new FormData();
-              formData1.append("audio_file", audioBlob, "recording.webm");
-              formData1.append("expected_text", expectedSentence);
-
-              const formData2 = new FormData();
-              formData2.append("audio_file", audioBlob, "recording.webm");
-              formData2.append("expected_text", expectedSentence);
-
-              // Fetch both text assessment and TTS audio in parallel
-              const [assessmentResponse, ttsResponse] = await Promise.all([
-                fetch("/api/v1/assess", {
-                  method: "POST",
-                  body: formData1,
-                }),
-                fetch("/api/v1/assess/tts", {
-                  method: "POST",
-                  body: formData2,
-                }),
-              ]);
-
-              if (!assessmentResponse.ok) {
-                const errorText = await assessmentResponse.text();
-                throw new Error(`API error ${assessmentResponse.status}: ${errorText}`);
-              }
-
-              const data = await assessmentResponse.json();
-
-              // Get TTS audio if available
-              let audioUrl = null;
-              if (ttsResponse.ok) {
-                const audioBlob = await ttsResponse.blob();
-                audioUrl = URL.createObjectURL(audioBlob);
-              }
-
-              this.displayResults(data.assessment, audioUrl);
-            } catch (error) {
-              console.error("Error processing assessment:", error);
-              alert(`Failed to assess pronunciation: ${error.message}`);
-              this.updateStatus("Error occurred. Please try again.", "x-circle");
-              this.currentAnimation = "idle";
-            } finally {
-              this.resetState();
-            }
-          },
-
-          resetState() {
-            this.state = "idle";
-            this.buttonIcon = "mic";
-            this.buttonVariant = "primary";
-            this.audioChunks = [];
-            this.mediaRecorder = null;
-            this.updateStatus("Ready to practice!", "info-circle");
-          },
-
-          displayResults(assessment, audioUrl = null) {
-            const errors = assessment.specific_errors || [];
-
-            let animation = "winner";
-            let title = "Perfect Pronunciation!";
-            let message = "Amazing! No errors detected.";
-            let statusIcon = "check-circle";
-
-            if (errors.length > 0) {
-              const criticalCount = errors.filter((e) => e.severity === "critical").length;
-
-              if (errors.length <= 2 && criticalCount === 0) {
-                animation = "happy";
-                title = "Great Job!";
-                message = "Just a few minor improvements needed.";
-                statusIcon = "hand-thumbs-up";
-              } else if (errors.length <= 4) {
-                animation = "cheerful";
-                title = "Good Effort!";
-                message = "Keep practicing, you're making progress!";
-                statusIcon = "emoji-smile";
-              } else {
-                animation = "upset";
-                title = "Needs Practice";
-                message = "Don't worry, let's work on these areas together.";
-                statusIcon = "exclamation-circle";
-              }
-            }
-
-            this.currentAnimation = animation;
-            this.updateStatus(
-              errors.length === 0 ? "Perfect!" : `Found ${errors.length} area(s) to improve`,
-              statusIcon
-            );
-
-            this.resultTitle = title;
-
-            let html = `<p>${message}</p>`;
-
-            if (errors.length > 0) {
-              html += '<ul class="error-list">';
-              errors.forEach((error) => {
-                const cssClass = error.severity === "critical" ? "error-critical" : "error-minor";
-                html += `
-                  <li class="error-item ${cssClass}">
-                    <strong>${error.word}</strong>: ${error.issue}
-                    <br><small><em>Suggestion: ${error.suggestion}</em></small>
-                  </li>
-                `;
-              });
-              html += "</ul>";
-            }
-
-            this.resultContent = html;
-            this.results = true;
-
-            // Play audio feedback if available
-            if (audioUrl) {
-              const audio = new Audio(audioUrl);
-              audio.play().catch((error) => {
-                console.error("Error playing audio feedback:", error);
-              });
-
-              // Clean up audio URL after playing
-              audio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-              };
-            }
-
-            setTimeout(() => {
-              this.currentAnimation = "idle";
-              this.updateStatus("Ready to practice again!", "info-circle");
-            }, 5000);
-          },
-
-          updateStatus(message, icon) {
-            this.statusHtml = `<sl-icon name="${icon}"></sl-icon> ${message}`;
-          },
-
-          preloadAnimations() {
-            Object.values(this.animations).forEach((url) => {
-              const link = document.createElement("link");
-              link.rel = "prefetch";
-              link.href = url;
-              document.head.appendChild(link);
-            });
-          },
-        };
-      }
-    </script>
-
-    <style>
-      body {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        padding: 1rem;
-      }
-
-      main {
-        max-width: 600px;
-        width: 100%;
-      }
-
-      .mascot-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-
-      dotlottie-player {
-        width: 300px;
-        height: 300px;
-        transition: opacity 0.3s ease;
-      }
-
-      .record-button-container {
-        display: flex;
-        justify-content: center;
-        margin: 2rem 0;
-      }
-
-      .status-text {
-        text-align: center;
-        font-size: 0.9rem;
-        color: var(--pico-muted-color);
-        margin-top: 0.5rem;
-      }
-
-      .result-box {
-        margin-top: 2rem;
-      }
-
-      .error-list {
-        margin: 1rem 0;
-        padding-left: 1.5rem;
-      }
-
-      .error-item {
-        margin: 0.5rem 0;
-      }
-
-      .error-critical {
-        color: var(--pico-del-color);
-        font-weight: bold;
-      }
-
-      .error-minor {
-        color: var(--pico-ins-color);
-      }
-
-      sl-button::part(base) {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      sl-button::part(label) {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-      }
-    </style>
-  </head>
-  <body>
-    <main class="container" x-data="pronunciationApp()" x-init="init()">
-      <!-- Mascot Animation -->
-      <div class="mascot-container">
-        <dotlottie-player :src="animations[currentAnimation]" background="transparent" speed="1" loop autoplay>
-        </dotlottie-player>
-      </div>
-
-      <div class="status-text" x-html="statusHtml"></div>
-
-      <!-- Expected Text Input -->
-      <label>
-        Expected Sentence:
-        <input type="text" x-model="expectedText" placeholder="Type the sentence you want to practice..." />
-      </label>
-
-      <!-- Circular Record Button -->
-      <div class="record-button-container">
-        <sl-button
-          @click="toggleRecording()"
-          :variant="buttonVariant"
-          :pulse="state === 'recording'"
-          :loading="state === 'processing'"
-          size="large"
-          circle
-          style="width: 80px; height: 80px"
-        >
-          <sl-icon :name="buttonIcon" style="font-size: 1.5rem"></sl-icon>
-        </sl-button>
-      </div>
-
-      <!-- Results -->
-      <article class="result-box" x-show="results" x-transition>
-        <h3 x-text="resultTitle"></h3>
-        <div x-html="resultContent"></div>
-      </article>
-    </main>
-  </body>
 </html>
