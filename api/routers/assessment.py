@@ -39,7 +39,9 @@ def get_assessment_service() -> GeminiAssessmentService:
     },
 )
 async def assess_pronunciation(
-    audio_file: Annotated[UploadFile, File(description="Audio file (WAV, MP3, or PCM)")],
+    audio_file: Annotated[
+        UploadFile, File(description="Audio file (WAV, MP3, or PCM)")
+    ],
     expected_text: Annotated[str, Form(description="Expected sentence text")],
     service: Annotated[GeminiAssessmentService, Depends(get_assessment_service)],
 ) -> AssessmentResponse:
@@ -75,7 +77,9 @@ async def assess_pronunciation(
             audio_data_bytes=audio_data, expected_sentence_text=expected_text
         )
 
-        logfire.info(f"Assessment completed. Found {len(result.specific_errors)} errors")
+        logfire.info(
+            f"Assessment completed. Found {len(result.specific_errors)} errors"
+        )
 
         return AssessmentResponse(assessment=result)
 
@@ -108,7 +112,9 @@ async def assess_pronunciation(
     },
 )
 async def assess_pronunciation_with_tts(
-    audio_file: Annotated[UploadFile, File(description="Audio file (WAV, MP3, or PCM)")],
+    audio_file: Annotated[
+        UploadFile, File(description="Audio file (WAV, MP3, or PCM)")
+    ],
     expected_text: Annotated[str, Form(description="Expected sentence text")],
     service: Annotated[GeminiAssessmentService, Depends(get_assessment_service)],
 ) -> StreamingResponse:
@@ -145,7 +151,7 @@ async def assess_pronunciation_with_tts(
             audio_data_bytes=audio_data, expected_sentence_text=expected_text
         )
 
-        logfire.info(f"Assessment completed. Generating TTS narration...")
+        logfire.info("Assessment completed. Generating TTS narration...")
 
         # Generate TTS narration
         tts_audio = service.generate_tts_narration(result)
@@ -159,7 +165,9 @@ async def assess_pronunciation_with_tts(
         return StreamingResponse(
             io.BytesIO(tts_audio),
             media_type="audio/wav",
-            headers={"Content-Disposition": "attachment; filename=assessment_narration.wav"},
+            headers={
+                "Content-Disposition": "attachment; filename=assessment_narration.wav"
+            },
         )
 
     except AudioUploadError as e:

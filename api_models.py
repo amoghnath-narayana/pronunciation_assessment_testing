@@ -13,7 +13,9 @@ class AssessmentRequest(BaseModel):
     """Request model for pronunciation assessment."""
 
     expected_text: str = Field(
-        ..., description="The expected sentence text to assess pronunciation against", min_length=1
+        ...,
+        description="The expected sentence text to assess pronunciation against",
+        min_length=1,
     )
 
 
@@ -30,13 +32,17 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(..., description="Error type or category")
     message: str = Field(..., description="Human-readable error message")
-    details: dict[str, Any] | None = Field(default=None, description="Additional error details")
+    details: dict[str, Any] | None = Field(
+        default=None, description="Additional error details"
+    )
 
 
 class AssessmentResponse(BaseModel):
     """Response model for pronunciation assessment."""
 
-    assessment: AssessmentResult = Field(..., description="Assessment result with scores and feedback")
+    assessment: AssessmentResult = Field(
+        ..., description="Assessment result with scores and feedback"
+    )
 
 
 class TTSResponse(BaseModel):
@@ -51,7 +57,9 @@ class AudioConfigResponse(BaseModel):
     """Audio configuration for frontend recording."""
 
     sample_rate: int = Field(..., description="Audio sample rate in Hz")
-    channels: int = Field(..., description="Number of audio channels (1=mono, 2=stereo)")
+    channels: int = Field(
+        ..., description="Number of audio channels (1=mono, 2=stereo)"
+    )
     bit_depth: int = Field(..., description="Bit depth for audio samples")
     mime_type: str = Field(..., description="MIME type for audio files")
     vad_enabled: bool = Field(..., description="Whether VAD is enabled")

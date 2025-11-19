@@ -59,7 +59,9 @@ async def log_requests(request: Request, call_next):
 
     # Log response time
     process_time = time.time() - start_time
-    logfire.info(f"{request.method} {request.url.path} completed in {process_time:.3f}s")
+    logfire.info(
+        f"{request.method} {request.url.path} completed in {process_time:.3f}s"
+    )
 
     response.headers["X-Process-Time"] = str(process_time)
     return response
@@ -72,7 +74,11 @@ async def assessment_error_handler(request: Request, exc: AssessmentError):
     logfire.error(f"Assessment error: {exc.message}", details=exc.details)
     return JSONResponse(
         status_code=500,
-        content={"error": exc.__class__.__name__, "message": exc.message, "details": exc.details},
+        content={
+            "error": exc.__class__.__name__,
+            "message": exc.message,
+            "details": exc.details,
+        },
     )
 
 

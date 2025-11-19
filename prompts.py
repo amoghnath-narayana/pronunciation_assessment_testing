@@ -71,7 +71,6 @@ def build_tts_narration_prompt(assessment_result) -> str:
         return "Awesome! Perfect reading!"
 
     error_details = " ".join(
-        f"{e.issue} {e.suggestion}"
-        for e in assessment_result.specific_errors
+        f"{e.issue} {e.suggestion}" for e in assessment_result.specific_errors
     )
     return f"Good try! {error_details}"

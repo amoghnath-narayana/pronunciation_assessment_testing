@@ -38,32 +38,31 @@ class GeminiAssessmentService:
     def client(self):
         # Use v1alpha API for Gemini 3 features (thinking_level)
         return genai.Client(
-            api_key=self.config.gemini_api_key,
-            http_options={'api_version': 'v1alpha'}
+            api_key=self.config.gemini_api_key, http_options={"api_version": "v1alpha"}
         )
 
     def _initialize_composer(self):
         """Initialize TTSNarrationComposer with dependencies.
-        
+
         Instantiates TTSAssetLoader, TTSCacheService, and TTSNarrationComposer
         with configuration from AppConfig.
-        
+
         Returns:
             TTSNarrationComposer: Initialized composer instance
-            
+
         Raises:
             Exception: If initialization fails (e.g., missing assets)
         """
         from services.tts_assets import TTSAssetLoader
         from services.tts_cache import TTSCacheService
         from services.tts_composer import TTSNarrationComposer
-        
+
         # Initialize asset loader (will raise exception if initialization fails)
         asset_loader = TTSAssetLoader(
             manifest_path=Path(self.config.tts_manifest_path),
-            assets_dir=Path(self.config.tts_assets_dir)
+            assets_dir=Path(self.config.tts_assets_dir),
         )
-        
+
         # Initialize cache service
         cache_service = TTSCacheService(
             cache_dir=Path(self.config.tts_cache_dir),
@@ -72,16 +71,15 @@ class GeminiAssessmentService:
             tts_config={
                 "model_name": self.config.tts_model_name,
                 "voice_name": self.config.tts_voice_name,
-                "voice_style_prompt": self.config.tts_voice_style_prompt
-            }
+                "voice_style_prompt": self.config.tts_voice_style_prompt,
+            },
         )
-        
+
         # Initialize composer
         composer = TTSNarrationComposer(
-            asset_loader=asset_loader,
-            cache_service=cache_service
+            asset_loader=asset_loader, cache_service=cache_service
         )
-        
+
         logfire.info("TTSNarrationComposer initialized successfully")
         return composer
 
@@ -102,22 +100,29 @@ class GeminiAssessmentService:
         """
         try:
             import time
-            logfire.debug(f"Uploading {len(audio_data_bytes)} bytes of WAV audio to Gemini")
 
-            with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
+            logfire.debug(
+                f"Uploading {len(audio_data_bytes)} bytes of WAV audio to Gemini"
+            )
+
+            with temp_audio_file(
+                audio_data_bytes, self.config.temp_file_extension
+            ) as temp_path:
                 return self.client.files.upload(
                     file=temp_path,
                     config=types.UploadFileConfig(
                         mime_type=self.config.recorded_audio_mime_type,
-                        display_name=f"assessment_{int(time.time())}"
-                    )
+                        display_name=f"assessment_{int(time.time())}",
+                    ),
                 )
 
         except Exception as e:
             logfire.error(f"Audio upload failed: {e}")
             raise AudioUploadError(f"Failed to upload audio: {e}") from e
 
-    def assess_pronunciation(self, audio_data_bytes: bytes, expected_sentence_text: str) -> AssessmentResult:
+    def assess_pronunciation(
+        self, audio_data_bytes: bytes, expected_sentence_text: str
+    ) -> AssessmentResult:
         """Assess pronunciation of audio against expected text.
 
         Args:
@@ -148,12 +153,12 @@ class GeminiAssessmentService:
                     types.Part(
                         file_data=types.FileData(
                             file_uri=uploaded_file.uri,
-                            mime_type=uploaded_file.mime_type
+                            mime_type=uploaded_file.mime_type,
                         ),
                         media_resolution=types.PartMediaResolution(
                             level=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
                         ),
-                    )
+                    ),
                 ],
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
@@ -161,7 +166,9 @@ class GeminiAssessmentService:
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
                     response_schema=get_gemini_response_schema(),
-                    thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level=types.ThinkingLevel.LOW
+                    ),
                 ),
             )
             result = AssessmentResult.model_validate_json(response.text)
@@ -177,13 +184,17 @@ class GeminiAssessmentService:
 
             # Debug: Log errors from Gemini
             if result.specific_errors:
-                logfire.info(f"Gemini detected {len(result.specific_errors)} errors: {[(e.word, e.issue) for e in result.specific_errors]}")
+                logfire.info(
+                    f"Gemini detected {len(result.specific_errors)} errors: {[(e.word, e.issue) for e in result.specific_errors]}"
+                )
 
             return result
 
         except ValidationError as e:
             logfire.error(f"Invalid assessment response: {e}")
-            raise InvalidAssessmentResponseError(f"Invalid assessment response: {e}") from e
+            raise InvalidAssessmentResponseError(
+                f"Invalid assessment response: {e}"
+            ) from e
         except AudioUploadError:
             raise
         except Exception as e:
@@ -192,13 +203,13 @@ class GeminiAssessmentService:
 
     def generate_tts_narration(self, assessment_result: AssessmentResult) -> bytes:
         """Generate TTS audio from assessment result.
-        
+
         Uses optimized composer path if available, otherwise falls back to legacy
         single-call TTS generation.
-        
+
         Args:
             assessment_result: The assessment result to generate narration for
-            
+
         Returns:
             bytes: WAV audio data, or None if generation fails
         """
@@ -216,13 +227,13 @@ class GeminiAssessmentService:
 
     def _generate_tts_legacy(self, assessment_result: AssessmentResult) -> bytes:
         """Original single-call TTS generation (current implementation).
-        
+
         This method preserves the original monolithic TTS approach as a fallback
         when the optimized composer is unavailable or fails.
-        
+
         Args:
             assessment_result: The assessment result to generate narration for
-            
+
         Returns:
             bytes: WAV audio data, or None if generation fails
         """

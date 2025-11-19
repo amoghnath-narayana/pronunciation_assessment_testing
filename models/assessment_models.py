@@ -29,15 +29,9 @@ def get_gemini_response_schema() -> Dict[str, Any]:
                 "items": {
                     "type": "object",
                     "properties": {
-                        "word": {
-                            "type": "string"
-                        },
-                        "issue": {
-                            "type": "string"
-                        },
-                        "suggestion": {
-                            "type": "string"
-                        },
+                        "word": {"type": "string"},
+                        "issue": {"type": "string"},
+                        "suggestion": {"type": "string"},
                         "severity": {
                             "type": "string",
                             "enum": ["critical", "minor"],
