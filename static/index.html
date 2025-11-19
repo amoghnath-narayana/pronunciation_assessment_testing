@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pronunciation Practice</title>
+
+    <!-- Pico CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+    <!-- dotLottie Player -->
+    <script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
+
+    <!-- ONNX Runtime (required by VAD) -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/ort.min.js"></script>
+
+    <!-- VAD (Voice Activity Detection) -->
+    <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/bundle.min.js"></script>
+
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 1rem;
+      }
+
+      main {
+        max-width: 600px;
+        width: 100%;
+      }
+
+      .mascot-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 2rem 0;
+      }
+
+      dotlottie-player {
+        width: 300px;
+        height: 300px;
+        transition: opacity 0.3s ease;
+      }
+
+      .record-button-container {
+        display: flex;
+        justify-content: center;
+        margin: 2rem 0;
+      }
+
+      .record-button {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 4px solid var(--pico-primary);
+        background: var(--pico-primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+
+      .record-button:hover:not(:disabled) {
+        transform: scale(1.1);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+      }
+
+      .record-button:active:not(:disabled) {
+        transform: scale(0.95);
+      }
+
+      .record-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .record-button.recording {
+        background: var(--pico-del-color);
+        border-color: var(--pico-del-color);
+        animation: pulse 1.5s infinite;
+      }
+
+      .record-button.processing {
+        background: var(--pico-ins-color);
+        border-color: var(--pico-ins-color);
+        animation: spin 1s linear infinite;
+      }
+
+      .record-button svg {
+        width: 36px;
+        height: 36px;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.05);
+          opacity: 0.9;
+        }
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .result-box {
+        margin-top: 2rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background: var(--pico-card-background-color);
+        display: none;
+      }
+
+      .result-box.show {
+        display: block;
+      }
+
+      .error-list {
+        margin: 1rem 0;
+        padding-left: 1.5rem;
+      }
+
+      .error-item {
+        margin: 0.5rem 0;
+      }
+
+      .error-critical {
+        color: var(--pico-del-color);
+        font-weight: bold;
+      }
+
+      .error-minor {
+        color: var(--pico-ins-color);
+      }
+
+      .status-text {
+        text-align: center;
+        font-size: 0.9rem;
+        color: var(--pico-muted-color);
+        margin-top: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      header {
+        text-align: center;
+      }
+
+      header h1 {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+      }
+
+      .vad-indicator {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--pico-ins-color);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+
+      .vad-indicator.active {
+        opacity: 1;
+        animation: pulse 0.8s infinite;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>
+          <i data-lucide="volume-2"></i>
+          Pronunciation Practice
+        </h1>
+        <p>Practice your pronunciation with AI feedback</p>
+      </header>
+
+      <!-- Mascot Animation -->
+      <div class="mascot-container">
+        <dotlottie-player
+          id="mascot"
+          src="/assets/mascot/idle/idle.lottie"
+          background="transparent"
+          speed="1"
+          loop
+          autoplay
+        >
+        </dotlottie-player>
+      </div>
+
+      <div class="status-text" id="statusText">
+        <i data-lucide="info"></i>
+        <span>Loading...</span>
+      </div>
+
+      <!-- Expected Text Input -->
+      <label for="expectedText">
+        Expected Sentence:
+        <input
+          type="text"
+          id="expectedText"
+          placeholder="Type the sentence you want to practice..."
+          value="The cat is on the mat"
+        />
+      </label>
+
+      <!-- Circular Record Button -->
+      <div class="record-button-container">
+        <button
+          id="recordBtn"
+          class="record-button"
+          onclick="toggleRecording()"
+          title="Click to start/stop recording"
+          disabled
+        >
+          <div class="vad-indicator" id="vadIndicator"></div>
+          <i data-lucide="mic" id="recordIcon"></i>
+        </button>
+      </div>
+
+      <!-- Results -->
+      <article class="result-box" id="resultBox">
+        <h3 id="resultTitle">Assessment Results</h3>
+        <div id="resultContent"></div>
+      </article>
+    </main>
+
+    <!-- Initialize Lucide icons (must be outside module scope) -->
+    <script>
+      // Initialize icons as soon as DOM is ready
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+          console.log("Initializing Lucide icons");
+          lucide.createIcons();
+        });
+      } else {
+        console.log("Initializing Lucide icons immediately");
+        lucide.createIcons();
+      }
+    </script>
+
+    <script type="module">
+      // Audio configuration from server
+      let audioConfig = null;
+
+      // State management
+      let vadInstance = null;
+      let currentState = "idle"; // idle | recording | processing
+      let recordedAudioSamples = [];
+
+      const animations = {
+        idle: "/assets/mascot/idle/idle.lottie",
+        greetings: "/assets/mascot/greetings/greetings.lottie",
+        happy: "/assets/mascot/happy/happy_minified.lottie",
+        cheerful: "/assets/mascot/cheerful/cheerful.lottie",
+        winner: "/assets/mascot/winner/winner.lottie",
+        upset: "/assets/mascot/upset/upset_minified.lottie",
+      };
+
+      // DOM elements
+      const mascot = document.getElementById("mascot");
+      const recordBtn = document.getElementById("recordBtn");
+      const recordIcon = document.getElementById("recordIcon");
+      const vadIndicator = document.getElementById("vadIndicator");
+      const expectedText = document.getElementById("expectedText");
+      const resultBox = document.getElementById("resultBox");
+      const resultTitle = document.getElementById("resultTitle");
+      const resultContent = document.getElementById("resultContent");
+      const statusText = document.getElementById("statusText");
+
+      // Change mascot animation
+      function changeAnimation(state) {
+        if (animations[state]) {
+          mascot.style.opacity = "0.3";
+          setTimeout(() => {
+            mascot.load(animations[state]);
+            mascot.style.opacity = "1";
+          }, 200);
+        }
+      }
+
+      // Update status text
+      function updateStatus(message, icon = "info") {
+        statusText.innerHTML = `
+        <i data-lucide="${icon}"></i>
+        <span>${message}</span>
+      `;
+        lucide.createIcons();
+      }
+
+      // Fetch audio configuration from backend
+      async function loadAudioConfig() {
+        try {
+          const response = await fetch("/api/v1/audio-config");
+          if (!response.ok) throw new Error("Failed to load audio config");
+          audioConfig = await response.json();
+          console.log("Audio config loaded:", audioConfig);
+        } catch (error) {
+          console.error("Error loading audio config:", error);
+          throw error;
+        }
+      }
+
+      // Convert Float32 samples to WAV blob
+      function float32ToWav(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+
+        // WAV header
+        const writeString = (offset, string) => {
+          for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+          }
+        };
+
+        writeString(0, "RIFF");
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(8, "WAVE");
+        writeString(12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // Mono
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true); // 16-bit
+        writeString(36, "data");
+        view.setUint32(40, samples.length * 2, true);
+
+        // Convert float32 to int16
+        const volume = 0.8;
+        for (let i = 0; i < samples.length; i++) {
+          const sample = Math.max(-1, Math.min(1, samples[i] * volume));
+          view.setInt16(44 + i * 2, sample * 0x7fff, true);
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      // Initialize VAD
+      async function initializeVAD() {
+        try {
+          updateStatus("Initializing voice detection...", "loader");
+
+          vadInstance = await vad.MicVAD.new({
+            // VAD configuration from backend
+            positiveSpeechThreshold: audioConfig.vad_config.positiveSpeechThreshold,
+            negativeSpeechThreshold: audioConfig.vad_config.negativeSpeechThreshold,
+            minSpeechFrames: audioConfig.vad_config.minSpeechFrames,
+            preSpeechPadFrames: audioConfig.vad_config.preSpeechPadFrames,
+            redemptionFrames: audioConfig.vad_config.redemptionFrames,
+            frameSamples: audioConfig.vad_config.frameSamples,
+            submitUserSpeechOnPause: audioConfig.vad_config.submitUserSpeechOnPause,
+
+            // Callbacks
+            onSpeechStart: () => {
+              console.log("VAD: Speech START detected");
+              vadIndicator.classList.add("active");
+            },
+
+            onSpeechEnd: (audio) => {
+              console.log("VAD: Speech END detected, captured", audio.length, "samples at 16kHz");
+              console.log("VAD: Audio duration:", (audio.length / 16000).toFixed(2), "seconds");
+              console.log("VAD: Total samples so far:", recordedAudioSamples.length + audio.length);
+              vadIndicator.classList.remove("active");
+
+              // Accumulate audio segments
+              recordedAudioSamples.push(...audio);
+            },
+
+            onVADMisfire: () => {
+              console.log("VAD: Misfire - false positive detected");
+              vadIndicator.classList.remove("active");
+            },
+
+            // Explicit asset paths (using CDN defaults)
+            baseAssetPath: "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.7/dist/",
+            onnxWASMBasePath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/",
+          });
+
+          recordBtn.disabled = false;
+          updateStatus("Ready to practice!", "info");
+          changeAnimation("idle");
+        } catch (error) {
+          console.error("VAD initialization failed:", error);
+          updateStatus("VAD initialization failed. Please reload the page.", "x-circle");
+          recordBtn.disabled = true;
+          throw error;
+        }
+      }
+
+      // Toggle recording
+      async function toggleRecording() {
+        if (currentState === "idle") {
+          await startRecording();
+        } else if (currentState === "recording") {
+          await stopRecording();
+        }
+      }
+
+      // Start recording
+      async function startRecording() {
+        resultBox.classList.remove("show");
+        recordedAudioSamples = [];
+
+        currentState = "recording";
+        recordBtn.classList.add("recording");
+        recordIcon.setAttribute("data-lucide", "square");
+        lucide.createIcons();
+
+        changeAnimation("greetings");
+        updateStatus("Recording... Speak clearly!", "mic");
+
+        vadInstance.start();
+      }
+
+      // Stop recording
+      async function stopRecording() {
+        currentState = "processing";
+        recordBtn.classList.remove("recording");
+        recordBtn.classList.add("processing");
+        recordBtn.disabled = true;
+
+        changeAnimation("idle");
+        updateStatus("Finishing recording... Please stay quiet.", "loader");
+
+        // Pause VAD and wait for final speech end callback
+        // VAD needs silence to trigger onSpeechEnd, so we wait longer
+        vadInstance.pause();
+
+        // Wait 1.5 seconds for VAD to detect speech end and process any remaining audio
+        console.log("Waiting for VAD to finish processing...");
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        console.log("Recording stopped. Total samples collected:", recordedAudioSamples.length);
+        console.log("Duration:", (recordedAudioSamples.length / audioConfig.sample_rate).toFixed(2), "seconds");
+
+        updateStatus("Processing your pronunciation...", "loader");
+        await processRecording();
+      }
+
+      // Process recording and send to API
+      async function processRecording() {
+        const expectedSentence = expectedText.value.trim();
+
+        if (!expectedSentence) {
+          alert("Please enter an expected sentence first!");
+          updateStatus("Ready to practice!", "info");
+          changeAnimation("idle");
+          resetRecordingState();
+          return;
+        }
+
+        if (recordedAudioSamples.length === 0) {
+          alert("No audio recorded. Please try again and speak clearly.");
+          updateStatus("Ready to practice!", "info");
+          changeAnimation("idle");
+          resetRecordingState();
+          return;
+        }
+
+        try {
+          const audioBlob = float32ToWav(new Float32Array(recordedAudioSamples), audioConfig.sample_rate);
+
+          console.log("Sending WAV audio:", audioBlob.size, "bytes at", audioConfig.sample_rate, "Hz");
+
+          const formData = new FormData();
+          formData.append("audio_file", audioBlob, "recording.wav");
+          formData.append("expected_text", expectedSentence);
+
+          updateStatus("Analyzing pronunciation...", "loader");
+
+          const response = await fetch("/api/v1/assess", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API error ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json();
+          displayResults(data.assessment);
+        } catch (error) {
+          console.error("Error processing assessment:", error);
+          alert(`Failed to assess pronunciation: ${error.message}`);
+          updateStatus("Error occurred. Please try again.", "x-circle");
+          changeAnimation("idle");
+        } finally {
+          resetRecordingState();
+        }
+      }
+
+      // Reset button state
+      function resetRecordingState() {
+        currentState = "idle";
+        recordBtn.classList.remove("recording", "processing");
+        recordBtn.disabled = false;
+        recordIcon.setAttribute("data-lucide", "mic");
+        lucide.createIcons();
+        recordedAudioSamples = [];
+      }
+
+      // Display assessment results
+      function displayResults(assessment) {
+        const errors = assessment.specific_errors || [];
+
+        let animation = "winner";
+        let title = "Perfect Pronunciation!";
+        let message = "Amazing! No errors detected.";
+        let statusIcon = "check-circle";
+
+        if (errors.length > 0) {
+          const criticalCount = errors.filter((e) => e.severity === "critical").length;
+
+          if (errors.length <= 2 && criticalCount === 0) {
+            animation = "happy";
+            title = "Great Job!";
+            message = "Just a few minor improvements needed.";
+            statusIcon = "thumbs-up";
+          } else if (errors.length <= 4) {
+            animation = "cheerful";
+            title = "Good Effort!";
+            message = "Keep practicing, you're making progress!";
+            statusIcon = "smile";
+          } else {
+            animation = "upset";
+            title = "Needs Practice";
+            message = "Don't worry, let's work on these areas together.";
+            statusIcon = "alert-circle";
+          }
+        }
+
+        changeAnimation(animation);
+        updateStatus(errors.length === 0 ? "Perfect!" : `Found ${errors.length} area(s) to improve`, statusIcon);
+
+        resultTitle.textContent = title;
+
+        let html = `<p>${message}</p>`;
+
+        if (errors.length > 0) {
+          html += '<ul class="error-list">';
+          errors.forEach((error) => {
+            const cssClass = error.severity === "critical" ? "error-critical" : "error-minor";
+            html += `
+            <li class="error-item ${cssClass}">
+              <strong>${error.word}</strong>: ${error.issue}
+              <br><small><em>Suggestion: ${error.suggestion}</em></small>
+            </li>
+          `;
+          });
+          html += "</ul>";
+        }
+
+        resultContent.innerHTML = html;
+        resultBox.classList.add("show");
+
+        setTimeout(() => {
+          changeAnimation("idle");
+          updateStatus("Ready to practice again!", "info");
+        }, 5000);
+      }
+
+      // Initialize app
+      async function initializeApp() {
+        lucide.createIcons();
+
+        try {
+          await loadAudioConfig();
+          await initializeVAD();
+
+          // Preload animations
+          Object.values(animations).forEach((url) => {
+            const link = document.createElement("link");
+            link.rel = "prefetch";
+            link.href = url;
+            document.head.appendChild(link);
+          });
+        } catch (error) {
+          console.error("App initialization failed:", error);
+          updateStatus("Initialization failed. Please reload.", "x-circle");
+        }
+      }
+
+      window.toggleRecording = toggleRecording;
+      window.addEventListener("load", initializeApp);
+    </script>
+  </body>
+</html>

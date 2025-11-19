@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 import logfire
 
 from api.routers import assessment, health
@@ -74,22 +75,19 @@ async def assessment_error_handler(request: Request, exc: AssessmentError):
     )
 
 
+# Mount static files
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
 # Include routers
-app.include_router(health.router)
+app.include_router(health.router, prefix="/api/v1")
 app.include_router(assessment.router)
 
 
-# Root endpoint
+# Root endpoint - Serve index.html
 @app.get("/")
 async def root():
-    """Root endpoint with API information."""
-    return {
-        "name": APIConfig.TITLE,
-        "version": APIConfig.VERSION,
-        "status": "running",
-        "docs": "/docs",
-        "health": "/health",
-    }
+    """Serve the frontend application."""
+    return FileResponse("static/index.html")
 
 
 if __name__ == "__main__":

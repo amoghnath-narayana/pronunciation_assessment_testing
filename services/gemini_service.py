@@ -82,16 +82,34 @@ class GeminiAssessmentService:
         return composer
 
     def _upload_audio_file(self, audio_data_bytes: bytes):
-        """Upload audio file to Gemini API using temporary file.
-        
+        """Upload WAV audio file to Gemini API using temporary file.
+
+        Frontend sends 16kHz mono WAV audio optimized for speech recognition.
+        No conversion needed - direct upload for best quality.
+
         Args:
-            audio_data_bytes: Audio data to upload
-            
+            audio_data_bytes: WAV audio data from frontend
+
         Returns:
             Uploaded file object from Gemini API
+
+        Raises:
+            AudioUploadError: If audio upload fails
         """
-        with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
-            return self.client.files.upload(file=temp_path)
+        try:
+            logfire.debug(f"Uploading {len(audio_data_bytes)} bytes of WAV audio to Gemini")
+
+            with temp_audio_file(audio_data_bytes, self.config.temp_file_extension) as temp_path:
+                return self.client.files.upload(
+                    file=temp_path,
+                    config=types.UploadFileConfig(
+                        mime_type=self.config.recorded_audio_mime_type
+                    )
+                )
+
+        except Exception as e:
+            logfire.error(f"Audio upload failed: {e}")
+            raise AudioUploadError(f"Failed to upload audio: {e}") from e
 
     def assess_pronunciation(self, audio_data_bytes: bytes, expected_sentence_text: str) -> AssessmentResult:
         """Assess pronunciation of audio against expected text.
