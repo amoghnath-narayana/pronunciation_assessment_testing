@@ -91,6 +91,13 @@ async def root():
     return FileResponse("static/index.html")
 
 
+# Handle Chrome DevTools request
+@app.get("/.well-known/appspecific/com.chrome.devtools.json")
+async def chrome_devtools():
+    """Return empty JSON for Chrome DevTools request."""
+    return JSONResponse(content={})
+
+
 if __name__ == "__main__":
     import uvicorn
 
