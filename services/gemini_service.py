@@ -36,7 +36,11 @@ class GeminiAssessmentService:
 
     @cached_property
     def client(self):
-        return genai.Client(api_key=self.config.gemini_api_key)
+        # Use v1alpha API for Gemini 3 features (thinking_level)
+        return genai.Client(
+            api_key=self.config.gemini_api_key,
+            http_options={'api_version': 'v1alpha'}
+        )
 
     def _initialize_composer(self):
         """Initialize TTSNarrationComposer with dependencies.
@@ -132,6 +136,8 @@ class GeminiAssessmentService:
                 logfire.error("Failed to upload audio file")
                 raise AudioUploadError("Failed to upload audio file to Gemini API")
 
+            # Gemini 3 thinking is ALWAYS ON (defaults to HIGH if not specified)
+            # We explicitly set LOW for optimal latency while maintaining quality
             response = self.client.models.generate_content(
                 model=self.config.model_name,
                 contents=[build_assessment_prompt(expected_sentence_text), uploaded_file],
@@ -141,7 +147,7 @@ class GeminiAssessmentService:
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
                     response_schema=get_gemini_response_schema(),
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
                 ),
             )
             result = AssessmentResult.model_validate_json(response.text)
