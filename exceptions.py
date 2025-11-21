@@ -28,12 +28,6 @@ class InvalidAssessmentResponseError(AssessmentError):
     pass
 
 
-class TTSGenerationError(AssessmentError):
-    """Exception raised when TTS generation fails."""
-
-    pass
-
-
 class ConfigurationError(AssessmentError):
     """Exception raised when configuration is invalid.
 

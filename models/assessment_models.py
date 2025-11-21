@@ -53,7 +53,13 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                     "completeness": {"type": "number"},
                     "prosody": {"type": "number"},
                 },
-                "required": ["pronunciation", "accuracy", "fluency", "completeness", "prosody"],
+                "required": [
+                    "pronunciation",
+                    "accuracy",
+                    "fluency",
+                    "completeness",
+                    "prosody",
+                ],
             },
             "word_level_feedback": {
                 "type": "array",

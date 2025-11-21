@@ -32,9 +32,6 @@ logfire.configure(send_to_logfire=False, inspect_arguments=False)
 # Target loudness for normalization (dBFS)
 TARGET_LOUDNESS_DBFS = -20.0
 
-# Number of variants to generate per category
-VARIANTS_PER_CATEGORY = 4
-
 # Category definitions with varied prompts
 CATEGORY_PROMPTS = {
     "perfect_intro": {

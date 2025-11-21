@@ -2,9 +2,9 @@
 API Request and Response Models.
 
 These models define the contract between frontend and backend:
+    - HealthCheckResponse: Health check status
     - ErrorResponse: Standard error format
-    - AzureAssessmentResponse: Assessment-only response (legacy)
-    - AssessmentWithTTSResponse: Combined assessment + TTS response (optimized)
+    - AssessmentWithTTSResponse: Combined assessment + TTS response
 """
 
 from typing import Any
@@ -13,6 +13,19 @@ from pydantic import BaseModel, Field
 
 from models.assessment_models import AzureAnalysisResult, OverallScores
 
+__all__ = [
+    "HealthCheckResponse",
+    "ErrorResponse",
+    "AssessmentWithTTSResponse",
+]
+
+
+class HealthCheckResponse(BaseModel):
+    """Health check response."""
+
+    status: str = Field(description="Service health status")
+    version: str = Field(description="API version")
+
 
 class ErrorResponse(BaseModel):
     """Standard error response format."""
@@ -20,32 +33,6 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     details: dict[str, Any] | None = None
-
-
-class AzureAssessmentResponse(BaseModel):
-    """
-    Response for pronunciation assessment (without TTS).
-
-    Used by: Legacy endpoints or when include_tts=False
-    """
-
-    summary_text: str = Field(description="Encouraging summary for the learner")
-    overall_scores: OverallScores = Field(description="Azure pronunciation scores (0-100)")
-    word_level_feedback: list = Field(default_factory=list, description="Word-level issues and suggestions")
-    prosody_feedback: str | None = Field(default=None, description="Rhythm/intonation feedback")
-
-    @classmethod
-    def from_analysis_result(cls, result: AzureAnalysisResult) -> "AzureAssessmentResponse":
-        """Create from AzureAnalysisResult."""
-        return cls(
-            summary_text=result.summary_text,
-            overall_scores=result.overall_scores,
-            word_level_feedback=[
-                {"word": wf.word, "issue": wf.issue, "suggestion": wf.suggestion, "severity": wf.severity}
-                for wf in result.word_level_feedback
-            ],
-            prosody_feedback=result.prosody_feedback,
-        )
 
 
 class AssessmentWithTTSResponse(BaseModel):
@@ -61,10 +48,18 @@ class AssessmentWithTTSResponse(BaseModel):
     """
 
     summary_text: str = Field(description="Encouraging summary for the learner")
-    overall_scores: OverallScores = Field(description="Azure pronunciation scores (0-100)")
-    word_level_feedback: list = Field(default_factory=list, description="Word-level issues and suggestions")
-    prosody_feedback: str | None = Field(default=None, description="Rhythm/intonation feedback")
-    tts_audio_base64: str | None = Field(default=None, description="Base64-encoded WAV audio feedback")
+    overall_scores: OverallScores = Field(
+        description="Azure pronunciation scores (0-100)"
+    )
+    word_level_feedback: list = Field(
+        default_factory=list, description="Word-level issues and suggestions"
+    )
+    prosody_feedback: str | None = Field(
+        default=None, description="Rhythm/intonation feedback"
+    )
+    tts_audio_base64: str | None = Field(
+        default=None, description="Base64-encoded WAV audio feedback"
+    )
 
     @classmethod
     def from_analysis_result(
@@ -84,7 +79,12 @@ class AssessmentWithTTSResponse(BaseModel):
             summary_text=result.summary_text,
             overall_scores=result.overall_scores,
             word_level_feedback=[
-                {"word": wf.word, "issue": wf.issue, "suggestion": wf.suggestion, "severity": wf.severity}
+                {
+                    "word": wf.word,
+                    "issue": wf.issue,
+                    "suggestion": wf.suggestion,
+                    "severity": wf.severity,
+                }
                 for wf in result.word_level_feedback
             ],
             prosody_feedback=result.prosody_feedback,

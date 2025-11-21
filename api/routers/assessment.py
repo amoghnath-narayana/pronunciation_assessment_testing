@@ -14,16 +14,18 @@ Optimization Notes:
 """
 
 import base64
-import io
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends
-from fastapi.responses import StreamingResponse
 import logfire
 
-from api_models import AzureAssessmentResponse, AssessmentWithTTSResponse, ErrorResponse
+from api_models import AssessmentWithTTSResponse, ErrorResponse
 from config import AppConfig
-from exceptions import AssessmentError, AudioProcessingError, InvalidAssessmentResponseError
+from exceptions import (
+    AssessmentError,
+    AudioProcessingError,
+    InvalidAssessmentResponseError,
+)
 from services.gemini_service import AssessmentService
 
 router = APIRouter(prefix="/api/v1", tags=["assessment"])
@@ -74,7 +76,9 @@ def get_assessment_service() -> AssessmentService:
 async def assess_pronunciation(
     audio_file: Annotated[UploadFile, File(description="Audio file (WebM/WAV)")],
     expected_text: Annotated[str, Form(description="Expected sentence")],
-    include_tts: Annotated[bool, Form(description="Include TTS audio in response")] = True,
+    include_tts: Annotated[
+        bool, Form(description="Include TTS audio in response")
+    ] = True,
     service: Annotated[AssessmentService, Depends(get_assessment_service)] = None,
 ) -> AssessmentWithTTSResponse:
     """
@@ -117,13 +121,15 @@ async def assess_pronunciation(
         # Step 1.2-1.4: Azure assessment + Gemini analysis (with high score shortcut)
         result = await service.assess_pronunciation_async(audio_data, expected_text)
 
-        logfire.info("Assessment complete", pron_score=result.overall_scores.pronunciation)
+        logfire.info(
+            "Assessment complete", pron_score=result.overall_scores.pronunciation
+        )
 
-        # Step 1.5: Generate TTS if requested
+        # Step 1.5: Generate TTS if requested (async for non-blocking)
         tts_audio_base64 = None
         if include_tts:
-            logfire.info("Generating TTS feedback")
-            tts_audio = service.generate_tts_narration(result)
+            logfire.info("Generating TTS feedback (async)")
+            tts_audio = await service.generate_tts_narration_async(result)
             if tts_audio:
                 tts_audio_base64 = base64.b64encode(tts_audio).decode("utf-8")
                 logfire.info("TTS complete", audio_bytes=len(tts_audio))

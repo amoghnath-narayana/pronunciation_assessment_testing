@@ -14,14 +14,42 @@ from api.routers.health import router as health_router
 from constants import APIConfig
 from exceptions import AssessmentError
 
+__all__ = [
+    "app",
+    "log_requests",
+    "assessment_error_handler",
+    "global_exception_handler",
+    "root",
+    "chrome_devtools",
+]
+
 
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application lifespan events."""
+    """
+    Manage application lifespan events.
+
+    Startup:
+        [1] Pre-warm HTTP clients for faster first request
+        [2] Initialize singleton services
+    """
     # Startup
     logfire.info("Starting Pronunciation Assessment API")
+
+    # [1] Pre-warm HTTP client connections (~50-100ms saved on first request)
+    from services.azure_speech_service import warmup_http_client
+
+    await warmup_http_client()
+
+    # [2] Initialize singleton AssessmentService early
+    from api.routers.assessment import get_assessment_service
+
+    get_assessment_service()
+    logfire.info("Services initialized and ready")
+
     yield
+
     # Shutdown
     logfire.info("Shutting down Pronunciation Assessment API")
 

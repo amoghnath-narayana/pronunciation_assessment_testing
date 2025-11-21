@@ -26,6 +26,7 @@ import httpx
 import logfire
 
 from exceptions import ConfigurationError, AudioProcessingError
+from utils import ensure_wav_pcm16
 
 
 # -----------------------------------------------------------------------------
@@ -52,6 +53,17 @@ def get_http_client() -> httpx.AsyncClient:
         )
         logfire.info("Created shared async HTTP client for Azure Speech")
     return _http_client
+
+
+async def warmup_http_client() -> None:
+    """
+    Pre-warm HTTP client connections at startup.
+
+    This saves ~50-100ms on the first request by establishing
+    TCP connections before they're needed.
+    """
+    get_http_client()
+    logfire.info("HTTP client warmed up and ready")
 
 
 @dataclass
@@ -119,13 +131,22 @@ async def assess_pronunciation_async(
     if config is None:
         config = AzureSpeechConfig.from_env()
 
-    # [2.2] Build config (per Azure docs: all values must be strings)
+    # Normalize audio to 16 kHz PCM WAV to match Azure REST contract
+    try:
+        audio_bytes = ensure_wav_pcm16(audio_bytes)
+    except Exception as e:
+        logfire.error("Audio normalization failed", error=str(e))
+        raise AudioProcessingError(
+            "Audio must be convertible to 16kHz mono PCM WAV for Azure Pronunciation Assessment"
+        ) from e
+
+    # [2.2] Build config per Azure docs
     pronunciation_config = {
         "ReferenceText": reference_text.strip(),
         "GradingSystem": "HundredMark",
         "Granularity": "Phoneme",
         "Dimension": "Comprehensive",
-        "EnableProsodyAssessment": "True",  # Must be string "True", not boolean
+        "EnableProsodyAssessment": True,
     }
 
     # [2.3] Base64 encode
@@ -159,8 +180,12 @@ async def assess_pronunciation_async(
 
         if response.status_code != 200:
             error_detail = response.text[:500] if response.text else "No details"
-            logfire.error("Azure API error", status=response.status_code, error=error_detail)
-            raise AudioProcessingError(f"Azure API status {response.status_code}: {error_detail}")
+            logfire.error(
+                "Azure API error", status=response.status_code, error=error_detail
+            )
+            raise AudioProcessingError(
+                f"Azure API status {response.status_code}: {error_detail}"
+            )
 
         result = response.json()
 

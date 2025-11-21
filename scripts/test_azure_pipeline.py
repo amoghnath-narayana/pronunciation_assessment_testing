@@ -13,7 +13,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import sys
 from pathlib import Path
@@ -42,11 +41,14 @@ def test_azure_connection():
 
 def test_azure_assessment(audio_path: str, reference_text: str):
     """Test Azure Speech pronunciation assessment with a WAV file."""
-    print(f"\nTesting Azure pronunciation assessment...")
+    print("\nTesting Azure pronunciation assessment...")
     print(f"  Audio: {audio_path}")
     print(f"  Text: {reference_text}")
 
-    from services.azure_speech_service import assess_pronunciation_with_azure, extract_assessment_summary
+    from services.azure_speech_service import (
+        assess_pronunciation_with_azure,
+        extract_assessment_summary,
+    )
 
     # Read audio file
     with open(audio_path, "rb") as f:
@@ -67,7 +69,7 @@ def test_azure_assessment(audio_path: str, reference_text: str):
         summary = extract_assessment_summary(result)
         scores = summary["overall_scores"]
 
-        print(f"\n  Overall Scores:")
+        print("\n  Overall Scores:")
         print(f"    Pronunciation: {scores['pronunciation_score']:.1f}")
         print(f"    Accuracy:      {scores['accuracy_score']:.1f}")
         print(f"    Fluency:       {scores['fluency_score']:.1f}")
@@ -77,9 +79,11 @@ def test_azure_assessment(audio_path: str, reference_text: str):
         print(f"\n  Recognized Text: {summary['display_text']}")
 
         if summary["words"]:
-            print(f"\n  Word-level Details:")
+            print("\n  Word-level Details:")
             for word in summary["words"]:
-                error = f" ({word['error_type']})" if word["error_type"] != "None" else ""
+                error = (
+                    f" ({word['error_type']})" if word["error_type"] != "None" else ""
+                )
                 print(f"    - {word['word']}: {word['accuracy_score']:.1f}{error}")
 
     return result
@@ -87,9 +91,9 @@ def test_azure_assessment(audio_path: str, reference_text: str):
 
 def test_full_pipeline(audio_path: str, reference_text: str):
     """Test the full Azure + Gemini pipeline."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Testing Full Pipeline (Azure + Gemini)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     from config import AppConfig
     from services.gemini_service import AssessmentService
@@ -113,7 +117,7 @@ def test_full_pipeline(audio_path: str, reference_text: str):
 
     print("Results:")
     print(f"  Summary: {result.summary_text}")
-    print(f"\n  Overall Scores:")
+    print("\n  Overall Scores:")
     print(f"    Pronunciation: {result.overall_scores.pronunciation:.1f}")
     print(f"    Accuracy:      {result.overall_scores.accuracy:.1f}")
     print(f"    Fluency:       {result.overall_scores.fluency:.1f}")
@@ -162,6 +166,7 @@ def main():
 
     # Load environment variables
     from dotenv import load_dotenv
+
     load_dotenv()
 
     # Test connection
@@ -189,7 +194,9 @@ def main():
 
     if not args.audio or not os.path.exists(args.audio):
         print("\nNo audio file provided or found.")
-        print("Usage: python scripts/test_azure_pipeline.py --audio path/to/audio.wav --text 'Your sentence'")
+        print(
+            "Usage: python scripts/test_azure_pipeline.py --audio path/to/audio.wav --text 'Your sentence'"
+        )
         sys.exit(1)
 
     # Run tests

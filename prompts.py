@@ -7,7 +7,7 @@ AZURE_ANALYSIS_SYSTEM_PROMPT = """You analyze Azure Speech pronunciation scores 
 Be encouraging. Use simple words. Focus on 1-2 key issues max."""
 
 
-def build_azure_analysis_prompt(azure_result: dict, reference_text: str, user_profile: dict | None = None) -> str:
+def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
     """Build concise prompt for Gemini to analyze Azure results."""
     # Extract only essential data to reduce token usage
     nbest = azure_result.get("NBest", [{}])[0]
@@ -19,11 +19,13 @@ def build_azure_analysis_prompt(azure_result: dict, reference_text: str, user_pr
     for w in words:
         wa = w.get("PronunciationAssessment", {})
         if wa.get("AccuracyScore", 100) < 80 or wa.get("ErrorType", "None") != "None":
-            problem_words.append({
-                "word": w.get("Word"),
-                "score": wa.get("AccuracyScore"),
-                "error": wa.get("ErrorType"),
-            })
+            problem_words.append(
+                {
+                    "word": w.get("Word"),
+                    "score": wa.get("AccuracyScore"),
+                    "error": wa.get("ErrorType"),
+                }
+            )
 
     return f"""Reference: "{reference_text}"
 Scores: Pron={scores.get("PronScore", 0)}, Acc={scores.get("AccuracyScore", 0)}, Flu={scores.get("FluencyScore", 0)}, Comp={scores.get("CompletenessScore", 0)}, Pros={scores.get("ProsodyScore", 0)}

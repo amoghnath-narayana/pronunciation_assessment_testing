@@ -1,16 +1,21 @@
 """Central configuration for the Pronunciation Assessment application."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppConfig(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="forbid", env_prefix="")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_prefix="")
 
     # Azure Speech Settings
-    speech_key: str
-    speech_region: str
+    speech_key: str = Field(
+        validation_alias=AliasChoices("SPEECH_KEY", "AZURE_SPEECH_KEY")
+    )
+    speech_region: str = Field(
+        validation_alias=AliasChoices("SPEECH_REGION", "AZURE_SPEECH_REGION")
+    )
     speech_language_code: str = "en-IN"
 
     # Gemini API Settings (for analysis and TTS only)

@@ -30,3 +30,18 @@ def pcm_to_wav(
     buffer = io.BytesIO()
     audio.export(buffer, format="wav")
     return buffer.getvalue()
+
+
+def ensure_wav_pcm16(
+    audio_bytes: bytes, target_sample_rate: int = 16000, channels: int = 1
+) -> bytes:
+    """Normalize arbitrary audio to 16 kHz, 16-bit PCM WAV (Azure requirement)."""
+    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+    normalized = (
+        audio.set_frame_rate(target_sample_rate)
+        .set_channels(channels)
+        .set_sample_width(2)  # 16-bit PCM
+    )
+    buffer = io.BytesIO()
+    normalized.export(buffer, format="wav")
+    return buffer.getvalue()
