@@ -253,9 +253,7 @@ class AssessmentService:
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
                     response_schema=AzureAnalysisResult,
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=self.config.assessment_thinking_budget
-                    ),
+                    thinking_config=types.ThinkingConfig(thinking_level="low"),
                 ),
             )
 

@@ -3,7 +3,19 @@
 import json
 
 # Concise system prompt for Gemini analysis
-AZURE_ANALYSIS_SYSTEM_PROMPT = """Analyze pronunciation for Indian English learners (ages 5-7). Be encouraging, use simple words, focus on 1-2 key issues."""
+AZURE_ANALYSIS_SYSTEM_PROMPT = """Analyze pronunciation for Indian English learners (ages 5-7). 
+
+CONTEXT: Indian English has natural variations (retroflex sounds, different 'r', 'v'/'w' patterns). Accept these as valid unless severely unclear.
+
+GUIDELINES:
+- Be very encouraging and supportive
+- Only flag issues if phoneme accuracy <70 (not <80) - be lenient
+- Accept Indian English accent patterns as correct
+- Focus on clarity, not native-like perfection
+- Use simple, child-friendly language
+- Celebrate effort and progress
+
+CRITICAL: In the "issue" field, always specify the exact letter(s) from the word that need work (e.g., "The 'th' sound is unclear", "The 'r' sound is unclear"). This is essential for highlighting."""
 
 
 def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
@@ -101,11 +113,24 @@ Scores: Pron={scores.get("PronScore", 0)} Acc={scores.get("AccuracyScore", 0)} F
 Words (phoneme data):
 {json.dumps(detailed_words, indent=2)}
 
-Analyze phonemes. Identify unclear sounds (accuracy<90 or phoneme<80). Max 3 feedback items.
-Note: Azure detects unclear sounds, not word substitutions.
+ANALYSIS RULES FOR INDIAN ENGLISH LEARNERS:
+1. Be LENIENT - Only flag issues if phoneme accuracy <70 (not <80)
+2. Accept Indian English accent variations (retroflex sounds, different 'r', 'v'/'w' patterns)
+3. Ignore minor accent differences - focus on CLARITY only
+4. If overall score >75, give mostly positive feedback with at most 1 gentle suggestion
+5. For scores 60-75, provide 1-2 specific tips
+6. For scores <60, provide 2-3 clear, actionable tips
+
+FEEDBACK FORMAT:
+- Identify the EXACT LETTER(S) in the word that correspond to the problematic phoneme
+- In the "issue" field, write EXACTLY: "The '<letter>' sound is unclear" (e.g., "The 'th' sound is unclear", "The 'r' sound is unclear")
+- The letter(s) MUST match the actual letters in the word for highlighting to work
+- Use child-friendly language: "Try saying the 'th' like putting your tongue between your teeth"
+
+Max 3 feedback items. Prioritize encouragement over criticism.
 
 Return JSON:
-{{"summary_text":"<encouragement>","overall_scores":{{"pronunciation":<n>,"accuracy":<n>,"fluency":<n>,"completeness":<n>,"prosody":<n>}},"word_level_feedback":[{{"word":"<word>","issue":"'<letter>' sound unclear","suggestion":"<simple tip>","severity":"critical|minor"}}],"prosody_feedback":"<tip or null>"}}"""
+{{"summary_text":"<warm encouragement>","overall_scores":{{"pronunciation":<n>,"accuracy":<n>,"fluency":<n>,"completeness":<n>,"prosody":<n>}},"word_level_feedback":[{{"word":"<word>","issue":"The '<exact_letter(s)>' sound is unclear","suggestion":"<simple, friendly tip>","severity":"critical|minor"}}],"prosody_feedback":"<tip or null>"}}"""
 
 
 
