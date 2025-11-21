@@ -15,7 +15,6 @@ Optimizations:
 """
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -33,11 +32,10 @@ from models.assessment_models import (
 )
 from prompts import (
     AZURE_ANALYSIS_SYSTEM_PROMPT,
-    build_tts_narration_prompt,
     build_azure_analysis_prompt,
 )
-from services.azure_speech_service import assess_pronunciation_async, AzureSpeechConfig
-from utils import pcm_to_wav
+from services.azure_speech_service import assess_pronunciation_async
+from utils import convert_audio
 
 
 @dataclass
@@ -50,14 +48,10 @@ class AssessmentService:
 
     config: AppConfig
     _composer: object = field(default=None, init=False, repr=False)
-    _executor: ThreadPoolExecutor = field(default=None, init=False, repr=False)
     _high_score_tts_cache: bytes = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
-        """Initialize TTS composer and thread pool for async operations."""
-        # Thread pool for running sync Gemini calls in async context
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gemini")
-
+        """Initialize TTS composer for optimized audio generation."""
         if self.config.tts_enable_optimization:
             try:
                 self._composer = self._initialize_composer()
@@ -126,18 +120,10 @@ class AssessmentService:
         logfire.info("Step 1: Starting assessment", audio_bytes=len(audio_data_bytes))
 
         # [2] Azure pronunciation assessment (async)
-        azure_config = AzureSpeechConfig(
-            speech_key=self.config.speech_key,
-            speech_region=self.config.speech_region,
-            language_code=self.config.speech_language_code,
-            enable_miscue=self.config.speech_enable_miscue,
-        )
-
         azure_result = await assess_pronunciation_async(
             audio_bytes=audio_data_bytes,
             reference_text=expected_sentence_text,
-            language_code=self.config.speech_language_code,
-            config=azure_config,
+            config=self.config,
         )
 
         # Handle recognition failure
@@ -332,24 +318,13 @@ class AssessmentService:
                 f"Invalid Gemini structured output: {e}"
             ) from e
 
-    def generate_tts_narration(self, assessment_result: AzureAnalysisResult) -> bytes:
-        """Generate TTS audio from assessment result (sync version)."""
-        if self._composer:
-            try:
-                return self._composer.compose(assessment_result)
-            except Exception as e:
-                logfire.warn("TTS composer failed, using fallback", error=str(e))
-
-        return self._generate_tts_fallback(assessment_result)
-
     async def generate_tts_narration_async(
         self, assessment_result: AzureAnalysisResult
     ) -> bytes:
         """
         Generate TTS audio from assessment result (async version).
 
-        Runs TTS generation in thread pool to avoid blocking the event loop.
-        Uses cached audio for high-score responses.
+        Uses TTS composer if available, with caching for high-score responses.
 
         Args:
             assessment_result: The analysis result to narrate
@@ -366,10 +341,18 @@ class AssessmentService:
             logfire.info("Using cached high-score TTS")
             return self._high_score_tts_cache
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            self._executor, self.generate_tts_narration, assessment_result
-        )
+        # Use asyncio.to_thread for non-blocking execution
+        if self._composer:
+            try:
+                result = await asyncio.to_thread(
+                    self._composer.compose, assessment_result
+                )
+            except Exception as e:
+                logfire.error("TTS composer failed", error=str(e))
+                return None
+        else:
+            logfire.warn("TTS composer not available")
+            return None
 
         # Cache high-score TTS for future use
         if (
@@ -381,38 +364,3 @@ class AssessmentService:
             logfire.info("Cached high-score TTS for future use")
 
         return result
-
-    def _generate_tts_fallback(self, assessment_result: AzureAnalysisResult) -> bytes:
-        """Fallback TTS generation."""
-        try:
-            narration_text = build_tts_narration_prompt(assessment_result)
-            logfire.info("Generating TTS", text_length=len(narration_text))
-
-            response = self.client.models.generate_content(
-                model=self.config.tts_model_name,
-                contents=f"{self.config.tts_voice_style_prompt}\n\n{narration_text}",
-                config=types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=types.SpeechConfig(
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name=self.config.tts_voice_name
-                            )
-                        )
-                    ),
-                ),
-            )
-
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if part.inline_data:
-                        wav_data = pcm_to_wav(part.inline_data.data)
-                        logfire.info("TTS generated", audio_bytes=len(wav_data))
-                        return wav_data
-
-            logfire.warn("TTS returned no audio")
-            return None
-
-        except Exception as e:
-            logfire.error("TTS generation failed", error=str(e))
-            return None

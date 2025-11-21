@@ -111,10 +111,7 @@ class TTSNarrationComposer:
             raise
 
     def _normalize_loudness(self, audio: AudioSegment) -> AudioSegment:
-        """Apply loudness normalization to prevent volume jumps.
-
-        Uses match_target_amplitude to normalize to -20 dBFS, which is
-        a standard level for speech audio (not too loud, not too quiet).
+        """Apply loudness normalization using pydub's built-in method.
 
         Args:
             audio: The audio segment to normalize
@@ -123,12 +120,9 @@ class TTSNarrationComposer:
             AudioSegment: Normalized audio segment
         """
         try:
-            # Target -20 dBFS for speech (standard level)
-            target_dbfs = -20.0
-            normalized = audio.apply_gain(target_dbfs - audio.dBFS)
-            logfire.debug(
-                f"Normalized audio from {audio.dBFS:.2f} dBFS to {normalized.dBFS:.2f} dBFS"
-            )
+            # Use pydub's normalize() with headroom to prevent clipping
+            normalized = audio.normalize(headroom=0.1)
+            logfire.debug("Normalized audio loudness")
             return normalized
         except Exception as e:
             logfire.warning(

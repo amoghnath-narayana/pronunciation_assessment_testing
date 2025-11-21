@@ -7,7 +7,22 @@ from pathlib import Path
 from typing import Dict, List
 
 import logfire
+from pydantic import BaseModel, Field
 from pydub import AudioSegment
+
+
+class CategoryModel(BaseModel):
+    """Pydantic model for a TTS asset category."""
+
+    variants: List[str] = Field(min_length=1, description="List of audio file paths")
+
+
+class ManifestModel(BaseModel):
+    """Pydantic model for TTS manifest structure."""
+
+    categories: Dict[str, CategoryModel] = Field(
+        description="Dictionary of category names to category data"
+    )
 
 
 @dataclass
@@ -43,42 +58,28 @@ class TTSAssetLoader:
         )
 
     def _load_manifest(self) -> Dict:
-        """Load and validate manifest.json structure.
+        """Load and validate manifest.json using Pydantic.
 
         Returns:
             Dict: Parsed manifest data
 
         Raises:
             FileNotFoundError: If manifest file doesn't exist
-            json.JSONDecodeError: If manifest is not valid JSON
-            ValueError: If manifest structure is invalid
+            ValidationError: If manifest structure is invalid
         """
         if not self.manifest_path.exists():
             raise FileNotFoundError(f"Manifest file not found: {self.manifest_path}")
 
         with open(self.manifest_path, "r") as f:
-            manifest = json.load(f)
+            manifest_data = json.load(f)
 
-        # Validate manifest structure
-        if "categories" not in manifest:
-            raise ValueError("Manifest missing 'categories' field")
+        # Validate using Pydantic - raises ValidationError if invalid
+        validated = ManifestModel.model_validate(manifest_data)
 
-        if not isinstance(manifest["categories"], dict):
-            raise ValueError("Manifest 'categories' must be a dictionary")
-
-        # Validate each category
-        for category_name, category_data in manifest["categories"].items():
-            if "variants" not in category_data:
-                raise ValueError(f"Category '{category_name}' missing 'variants' field")
-
-            if not isinstance(category_data["variants"], list):
-                raise ValueError(f"Category '{category_name}' variants must be a list")
-
-            if len(category_data["variants"]) == 0:
-                logfire.warning(f"Category '{category_name}' has no variants")
-
-        logfire.info(f"Loaded manifest with {len(manifest['categories'])} categories")
-        return manifest
+        logfire.info(
+            f"Loaded manifest with {len(validated.categories)} categories"
+        )
+        return validated.model_dump()
 
     def _preload_assets(self):
         """Load all WAV files into memory as pydub AudioSegments.

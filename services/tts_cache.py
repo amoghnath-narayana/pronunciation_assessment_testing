@@ -1,6 +1,5 @@
 """Service for managing cached TTS audio with diskcache."""
 
-import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict
@@ -10,7 +9,7 @@ from google import genai
 from google.genai import types
 import logfire
 
-from utils import pcm_to_wav
+from utils import convert_audio
 
 
 @dataclass
@@ -41,34 +40,10 @@ class TTSCacheService:
             logfire.error(f"Failed to initialize diskcache: {e}")
             self._cache = None
 
-    def _generate_cache_key(self, text: str) -> str:
-        """Create hash key from text + voice config.
-
-        Args:
-            text: The narration text to generate cache key for
-
-        Returns:
-            str: SHA256 hash of normalized text + voice_name
-        """
-        # Normalize text to improve cache hit rate
-        # Strip whitespace and ensure consistent formatting
-        normalized_text = text.strip()
-
-        # Combine text with voice_name to ensure different voices get different cache entries
-        voice_name = self.tts_config.get("voice_name", "")
-        key_material = f"{normalized_text}|{voice_name}"
-
-        # Generate SHA256 hash
-        hash_obj = hashlib.sha256(key_material.encode("utf-8"))
-        cache_key = hash_obj.hexdigest()
-
-        logfire.debug(
-            f"Generated cache key {cache_key[:8]}... for text: {text[:50]}..."
-        )
-        return cache_key
-
     def get_or_generate(self, text: str) -> bytes:
         """Return cached WAV or generate via Gemini TTS.
+
+        Uses diskcache's built-in key handling (no manual hashing needed).
 
         Args:
             text: The narration text to synthesize
@@ -83,12 +58,14 @@ class TTSCacheService:
             logfire.warning("Cache not available, generating TTS directly")
             return self._generate_tts(text)
 
-        key = self._generate_cache_key(text)
+        # Use tuple as cache key - diskcache handles serialization
+        voice_name = self.tts_config.get("voice_name", "")
+        cache_key = (text.strip(), voice_name)
 
         # Check cache first
-        if key in self._cache:
-            logfire.debug(f"Cache hit for key {key[:8]}...")
-            return self._cache[key]
+        if cache_key in self._cache:
+            logfire.debug(f"Cache hit for text: {text[:50]}...")
+            return self._cache[cache_key]
 
         # Cache miss - generate TTS
         logfire.debug(f"Cache miss, generating TTS for text: {text[:50]}...")
@@ -96,8 +73,8 @@ class TTSCacheService:
 
         # Store in cache
         try:
-            self._cache[key] = wav_bytes
-            logfire.debug(f"Cached TTS audio for key {key[:8]}...")
+            self._cache[cache_key] = wav_bytes
+            logfire.debug(f"Cached TTS audio for text: {text[:50]}...")
         except Exception as e:
             logfire.warning(f"Failed to cache TTS audio: {e}")
 
@@ -147,7 +124,13 @@ class TTSCacheService:
             if response.candidates and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
                     if part.inline_data:
-                        wav_bytes = pcm_to_wav(part.inline_data.data)
+                        wav_bytes = convert_audio(
+                            part.inline_data.data,
+                            output_format="wav",
+                            sample_rate=24000,
+                            channels=1,
+                            is_raw_pcm=True,
+                        )
                         logfire.info(f"Generated TTS audio: {len(wav_bytes)} bytes")
                         return wav_bytes
 

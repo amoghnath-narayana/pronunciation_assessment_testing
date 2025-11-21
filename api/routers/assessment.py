@@ -14,6 +14,7 @@ Optimization Notes:
 """
 
 import base64
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends
@@ -31,38 +32,26 @@ from services.gemini_service import AssessmentService
 router = APIRouter(prefix="/api/v1", tags=["assessment"])
 
 
-# -----------------------------------------------------------------------------
-# [OPTIMIZATION] Singleton Service Pattern
-# -----------------------------------------------------------------------------
-# Previously: AssessmentService created per request (~50-200ms overhead)
-# Now: Single instance shared across all requests
-# -----------------------------------------------------------------------------
-_assessment_service: AssessmentService | None = None
-_app_config: AppConfig | None = None
-
-
+@lru_cache(maxsize=1)
 def get_assessment_service() -> AssessmentService:
     """
-    Step 0: Get or create singleton AssessmentService.
+    Get singleton AssessmentService (cached via @lru_cache).
 
-    Returns cached service instance to avoid:
-        - Repeated .env parsing
-        - TTS asset manifest loading
-        - Diskcache initialization
-        - Gemini client creation
+    FastAPI's dependency injection + lru_cache ensures single instance.
+    Avoids repeated initialization of:
+        - Config parsing
+        - TTS asset loading
+        - Diskcache setup
+        - Gemini client
 
     Returns:
         AssessmentService: Singleton service instance
     """
-    global _assessment_service, _app_config
-
-    if _assessment_service is None:
-        logfire.info("Initializing singleton AssessmentService")
-        _app_config = AppConfig()
-        _assessment_service = AssessmentService(config=_app_config)
-        logfire.info("Singleton AssessmentService ready")
-
-    return _assessment_service
+    logfire.info("Initializing singleton AssessmentService")
+    config = AppConfig()
+    service = AssessmentService(config=config)
+    logfire.info("Singleton AssessmentService ready")
+    return service
 
 
 @router.post(
@@ -118,7 +107,7 @@ async def assess_pronunciation(
             include_tts=include_tts,
         )
 
-        # Step 1.2-1.4: Azure assessment + Gemini analysis (with high score shortcut)
+        # Step 1.2-1.4: Azure assessment + Gemini analysis
         result = await service.assess_pronunciation_async(audio_data, expected_text)
 
         logfire.info(
@@ -137,15 +126,11 @@ async def assess_pronunciation(
         # Step 1.6: Return combined response
         return AssessmentWithTTSResponse.from_analysis_result(result, tts_audio_base64)
 
-    except AudioProcessingError as e:
-        logfire.error("Audio processing error", error=str(e))
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except InvalidAssessmentResponseError as e:
-        logfire.error("Invalid response", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e)) from e
     except AssessmentError as e:
-        logfire.error("Assessment error", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        # Handle all assessment errors (includes AudioProcessingError, InvalidAssessmentResponseError)
+        status_code = 400 if e.error_type == "audio_processing" else 500
+        logfire.error(f"Assessment error ({e.error_type})", error=str(e))
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
     except Exception as e:
         logfire.exception("Unexpected error")
         raise HTTPException(status_code=500, detail="Internal server error") from e

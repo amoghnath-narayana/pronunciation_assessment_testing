@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AppConfig(BaseSettings):
     """Application configuration loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_prefix="")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Azure Speech Settings
     speech_key: str = Field(

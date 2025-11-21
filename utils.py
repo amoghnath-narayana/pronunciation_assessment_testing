@@ -5,43 +5,50 @@ import io
 from pydub import AudioSegment
 
 
-def pcm_to_wav(
-    pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sample_width: int = 2
+def convert_audio(
+    audio_data: bytes,
+    output_format: str = "wav",
+    sample_rate: int | None = None,
+    channels: int | None = None,
+    sample_width: int | None = None,
+    is_raw_pcm: bool = False,
 ) -> bytes:
-    """Convert raw PCM audio data to WAV format.
+    """Convert audio data to specified format using pydub.
 
-    Used for converting Gemini TTS output (raw PCM) to WAV format.
+    Handles both file formats (WAV, WebM, MP3, etc.) and raw PCM data.
+    Uses pydub's automatic format detection and ffmpeg for conversions.
 
     Args:
-        pcm_data: Raw PCM audio bytes from Gemini TTS
-        sample_rate: Audio sample rate in Hz (default: 24000 for Gemini TTS)
-        channels: Number of audio channels (default: 1 for mono)
-        sample_width: Sample width in bytes (default: 2 for 16-bit)
+        audio_data: Audio bytes (file format or raw PCM)
+        output_format: Target format (default: "wav")
+        sample_rate: Target sample rate in Hz (optional)
+        channels: Target number of channels (optional)
+        sample_width: Sample width in bytes for raw PCM (optional)
+        is_raw_pcm: Whether input is raw PCM data (default: False)
 
     Returns:
-        bytes: WAV format audio data
+        bytes: Converted audio data
     """
-    audio = AudioSegment(
-        data=pcm_data,
-        sample_width=sample_width,
-        frame_rate=sample_rate,
-        channels=channels,
-    )
-    buffer = io.BytesIO()
-    audio.export(buffer, format="wav")
-    return buffer.getvalue()
+    # Load audio - pydub handles format detection automatically
+    if is_raw_pcm:
+        audio = AudioSegment(
+            data=audio_data,
+            sample_width=sample_width or 2,
+            frame_rate=sample_rate or 24000,
+            channels=channels or 1,
+        )
+    else:
+        audio = AudioSegment.from_file(io.BytesIO(audio_data))
 
+    # Apply transformations if specified
+    if sample_rate:
+        audio = audio.set_frame_rate(sample_rate)
+    if channels:
+        audio = audio.set_channels(channels)
+    if sample_width:
+        audio = audio.set_sample_width(sample_width)
 
-def ensure_wav_pcm16(
-    audio_bytes: bytes, target_sample_rate: int = 16000, channels: int = 1
-) -> bytes:
-    """Normalize arbitrary audio to 16 kHz, 16-bit PCM WAV (Azure requirement)."""
-    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-    normalized = (
-        audio.set_frame_rate(target_sample_rate)
-        .set_channels(channels)
-        .set_sample_width(2)  # 16-bit PCM
-    )
+    # Export to target format
     buffer = io.BytesIO()
-    normalized.export(buffer, format="wav")
+    audio.export(buffer, format=output_format)
     return buffer.getvalue()

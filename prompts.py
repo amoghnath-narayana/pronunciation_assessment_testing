@@ -123,11 +123,4 @@ Rules:
 - Keep explanations very simple and encouraging"""
 
 
-def build_tts_narration_prompt(assessment_result) -> str:
-    """Generate brief TTS narration text."""
-    if not assessment_result.specific_errors:
-        return "Awesome! Perfect reading!"
 
-    # Keep it very short for TTS
-    first_error = assessment_result.specific_errors[0]
-    return f"Good try! {first_error.suggestion}"

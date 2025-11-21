@@ -65,28 +65,11 @@ class AssessmentWithTTSResponse(BaseModel):
     def from_analysis_result(
         cls, result: AzureAnalysisResult, tts_audio_base64: str | None = None
     ) -> "AssessmentWithTTSResponse":
-        """
-        Create from AzureAnalysisResult with optional TTS audio.
-
-        Args:
-            result: The analysis result from Azure + Gemini pipeline
-            tts_audio_base64: Optional base64-encoded WAV audio
-
-        Returns:
-            AssessmentWithTTSResponse: Combined response for frontend
-        """
+        """Create from AzureAnalysisResult using Pydantic's model_validate."""
         return cls(
             summary_text=result.summary_text,
             overall_scores=result.overall_scores,
-            word_level_feedback=[
-                {
-                    "word": wf.word,
-                    "issue": wf.issue,
-                    "suggestion": wf.suggestion,
-                    "severity": wf.severity,
-                }
-                for wf in result.word_level_feedback
-            ],
+            word_level_feedback=[wf.model_dump() for wf in result.word_level_feedback],
             prosody_feedback=result.prosody_feedback,
             tts_audio_base64=tts_audio_base64,
         )

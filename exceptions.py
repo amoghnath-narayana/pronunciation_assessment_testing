@@ -2,38 +2,36 @@
 
 
 class AssessmentError(Exception):
-    """Base exception for assessment-related errors."""
+    """Base exception for all assessment-related errors.
+    
+    Attributes:
+        message: Human-readable error message
+        details: Optional dictionary with additional error context
+        error_type: Type of error for categorization
+    """
 
-    def __init__(self, message: str, details: dict | None = None):
+    def __init__(
+        self,
+        message: str,
+        details: dict | None = None,
+        error_type: str = "general",
+    ):
         self.message = message
         self.details = details or {}
+        self.error_type = error_type
         super().__init__(self.message)
 
 
+# Convenience aliases for common error types
 class AudioProcessingError(AssessmentError):
-    """Exception raised when audio processing fails.
+    """Audio processing errors (empty data, format issues, Azure API failures)."""
 
-    This includes:
-    - Empty audio data
-    - Azure Speech API errors
-    - Invalid audio format
-    """
-
-    pass
+    def __init__(self, message: str, details: dict | None = None):
+        super().__init__(message, details, error_type="audio_processing")
 
 
 class InvalidAssessmentResponseError(AssessmentError):
-    """Exception raised when Gemini returns invalid assessment data."""
+    """Invalid response from Gemini analysis."""
 
-    pass
-
-
-class ConfigurationError(AssessmentError):
-    """Exception raised when configuration is invalid.
-
-    This includes:
-    - Missing environment variables (SPEECH_KEY, SPEECH_REGION, etc.)
-    - Invalid configuration values
-    """
-
-    pass
+    def __init__(self, message: str, details: dict | None = None):
+        super().__init__(message, details, error_type="invalid_response")

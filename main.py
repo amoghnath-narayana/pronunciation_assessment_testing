@@ -1,8 +1,5 @@
 """FastAPI application for pronunciation assessment."""
 
-import time
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -23,36 +20,11 @@ __all__ = [
 ]
 
 
-# Lifespan context manager for startup/shutdown
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Manage application lifespan events.
-
-    Startup:
-        [1] Initialize singleton services
-    """
-    # Startup
-    logfire.info("Starting Pronunciation Assessment API")
-
-    # [1] Initialize singleton AssessmentService early
-    from api.routers.assessment import get_assessment_service
-
-    get_assessment_service()
-    logfire.info("Services initialized and ready")
-
-    yield
-
-    # Shutdown
-    logfire.info("Shutting down Pronunciation Assessment API")
-
-
-# Create FastAPI app
+# Create FastAPI app (dependency injection handles singleton initialization)
 app = FastAPI(
     title=APIConfig.TITLE,
     description=APIConfig.DESCRIPTION,
     version=APIConfig.VERSION,
-    lifespan=lifespan,
 )
 
 
