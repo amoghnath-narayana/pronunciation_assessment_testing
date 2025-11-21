@@ -20,7 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends
 import logfire
 
-from api_models import AssessmentWithTTSResponse, ErrorResponse
+from models.api_models import AssessmentWithTTSResponse, ErrorResponse
 from config import AppConfig
 from exceptions import (
     AssessmentError,

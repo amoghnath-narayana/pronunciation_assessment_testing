@@ -18,7 +18,6 @@ class AppConfig(BaseSettings):
     )
     # Use a PA-supported locale by default; override via env if needed
     speech_language_code: str = "en-US"
-    speech_enable_miscue: bool = True
 
     # Gemini API Settings (for analysis and TTS only)
     gemini_api_key: str

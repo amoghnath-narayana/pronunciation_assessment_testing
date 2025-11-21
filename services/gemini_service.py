@@ -1,17 +1,28 @@
 """
-Assessment Service - Orchestrates the pronunciation assessment pipeline.
+Pronunciation Assessment Service - Main orchestrator for the assessment pipeline.
 
-Flow:
-    [1] Receive audio + expected text from API endpoint
-    [2] Send to Azure Speech for pronunciation scores
-    [3] Send to Gemini for learner-friendly feedback and word-level analysis
-    [4] Generate TTS audio feedback (async, can run in parallel)
+This service coordinates the complete pronunciation assessment workflow:
+    [1] Receives audio bytes and expected text from API endpoint
+    [2] Calls Azure Speech SDK for pronunciation scoring (async)
+    [3] Sends Azure results to Gemini for learner-friendly analysis and word-level feedback
+    [4] Optionally generates TTS audio narration from assessment results
 
-Optimizations:
-    - Async Azure calls with Speech SDK
-    - Singleton service pattern (initialized once at startup)
-    - Async TTS generation for parallel execution (~300-500ms saved)
-    - TTS caching for repeated responses
+Architecture:
+    - Singleton pattern: One instance per app lifetime, initialized at startup
+    - Async throughout: Azure SDK calls and TTS generation run non-blocking
+    - Lazy TTS initialization: TTS composer only loads if optimization is enabled
+
+Key Methods:
+    - assess_pronunciation_async(): Main pipeline (steps 1-3)
+    - generate_tts_narration_async(): Optional TTS generation (step 4)
+    - _analyze_with_gemini(): Sends Azure results to Gemini for structured analysis
+    - _parse_gemini_response(): Validates and parses Gemini's structured output
+
+Performance Optimizations:
+    - Async Azure Speech SDK calls (non-blocking I/O)
+    - Async TTS generation allows parallel execution with other operations
+    - High-score TTS caching (perfect pronunciation responses cached in memory)
+    - TTS composer uses disk cache for dynamic narration segments
 """
 
 import asyncio
@@ -68,7 +79,20 @@ class AssessmentService:
         )
 
     def _initialize_composer(self):
-        """Initialize TTS composer with dependencies."""
+        """
+        Initialize TTS composer with all required dependencies.
+
+        Creates and wires together:
+            - TTSAssetLoader: Loads pre-recorded audio clips from manifest
+            - TTSCacheService: Manages disk cache for dynamic TTS segments
+            - TTSNarrationComposer: Composes final audio from static + dynamic segments
+
+        Returns:
+            TTSNarrationComposer: Initialized composer ready for audio generation
+
+        Raises:
+            Exception: If initialization fails (caught in __post_init__)
+        """
         from services.tts_assets import TTSAssetLoader
         from services.tts_cache import TTSCacheService
         from services.tts_composer import TTSNarrationComposer
@@ -97,19 +121,30 @@ class AssessmentService:
         expected_sentence_text: str,
     ) -> AzureAnalysisResult:
         """
-        Step 1-4: Main assessment pipeline (async).
+        Main assessment pipeline: Azure Speech → Gemini Analysis.
 
         Flow:
-            [1] Validate inputs
-            [2] Call Azure Speech API (async)
-            [3] Call Gemini for friendly feedback and word-level analysis
+            [1] Validate inputs (audio bytes and reference text)
+            [2] Call Azure Speech SDK for pronunciation assessment (async)
+                - Returns RecognitionStatus, pronunciation scores, word-level data
+                - Handles recognition failures (NoMatch, errors)
+            [3] Extract Azure scores from response
+                - PronScore, AccuracyScore, FluencyScore, CompletenessScore, ProsodyScore
+                - Returns early with friendly message if recognition failed or scores are zero
+            [4] Send Azure results to Gemini for learner-friendly analysis
+                - Gemini generates summary_text, word_level_feedback, prosody_feedback
+                - Uses structured output (JSON schema validation)
 
         Args:
-            audio_data_bytes: Recorded audio (WAV/WebM)
-            expected_sentence_text: Reference sentence
+            audio_data_bytes: Raw audio bytes (WAV/WebM format)
+            expected_sentence_text: Reference sentence for pronunciation comparison
 
         Returns:
-            AzureAnalysisResult: Scores and learner-friendly feedback
+            AzureAnalysisResult: Contains summary_text, overall_scores, word_level_feedback, prosody_feedback
+
+        Raises:
+            AudioProcessingError: If audio/text is empty or Azure SDK fails
+            InvalidAssessmentResponseError: If Gemini returns invalid structured output
         """
         # [1] Validate
         if not audio_data_bytes:
@@ -184,7 +219,29 @@ class AssessmentService:
     def _analyze_with_gemini(
         self, azure_result: dict, reference_text: str
     ) -> AzureAnalysisResult:
-        """Send Azure results to Gemini for learner-friendly analysis."""
+        """
+        Send Azure pronunciation results to Gemini for learner-friendly analysis.
+
+        This method takes raw Azure Speech API results and sends them to Gemini
+        for conversion into learner-friendly feedback with word-level suggestions.
+
+        Flow:
+            [1] Build prompt from Azure results and reference text
+            [2] Call Gemini with structured output (response_schema=AzureAnalysisResult)
+            [3] Parse and validate Gemini's structured response
+            [4] Return validated AzureAnalysisResult
+
+        Args:
+            azure_result: Raw Azure Speech API response (dict with NBest, Words, scores)
+            reference_text: Original reference sentence
+
+        Returns:
+            AzureAnalysisResult: Validated structured output from Gemini
+
+        Raises:
+            InvalidAssessmentResponseError: If Gemini returns invalid/missing structured output
+            ValidationError: If Gemini's response doesn't match AzureAnalysisResult schema
+        """
         try:
             prompt = build_azure_analysis_prompt(azure_result, reference_text)
 
@@ -225,10 +282,23 @@ class AssessmentService:
         self, response: types.GenerateContentResponse
     ) -> AzureAnalysisResult:
         """
-        Parse Gemini structured output into AzureAnalysisResult.
+        Extract and validate Gemini's structured output.
 
-        The Gemini client returns the structured object in `response.parsed` when
-        `response_schema` is provided, so no manual JSON parsing is needed.
+        When response_schema is provided to Gemini, the client returns the structured
+        object in response.parsed (no manual JSON parsing needed). This method:
+            [1] Extracts response.parsed
+            [2] Validates it matches AzureAnalysisResult schema
+            [3] Logs detailed error info if parsing fails
+
+        Args:
+            response: Gemini API response with structured output
+
+        Returns:
+            AzureAnalysisResult: Validated assessment result
+
+        Raises:
+            InvalidAssessmentResponseError: If response.parsed is None or invalid
+            ValidationError: If parsed data doesn't match AzureAnalysisResult schema
         """
         parsed = getattr(response, "parsed", None)
         text_preview = (getattr(response, "text", None) or "")[:300]
@@ -322,15 +392,29 @@ class AssessmentService:
         self, assessment_result: AzureAnalysisResult
     ) -> bytes:
         """
-        Generate TTS audio from assessment result (async version).
+        Generate TTS audio narration from assessment result (async, non-blocking).
 
-        Uses TTS composer if available, with caching for high-score responses.
+        This method creates audio feedback by composing pre-recorded clips with
+        dynamically generated TTS for specific error corrections.
+
+        Flow:
+            [1] Check in-memory cache for high-score template response
+            [2] If not cached, call TTS composer (runs in thread pool via asyncio.to_thread)
+            [3] TTS composer builds audio:
+                - Perfect reading: Single "perfect_intro" clip
+                - Has errors: "needs_work_intro" + dynamic error TTS + "closing_cheer"
+            [4] Cache high-score responses for future use
 
         Args:
-            assessment_result: The analysis result to narrate
+            assessment_result: Assessment result containing summary_text and word_level_feedback
 
         Returns:
-            bytes: WAV audio data or None if generation fails
+            bytes: WAV audio data, or None if TTS composer unavailable or generation fails
+
+        Note:
+            - Uses asyncio.to_thread for non-blocking execution
+            - TTS composer handles disk caching for dynamic segments
+            - High-score responses cached in memory (self._high_score_tts_cache)
         """
         # Check cache for high-score template response
         if (

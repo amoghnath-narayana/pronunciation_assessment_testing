@@ -2,7 +2,6 @@
 API Request and Response Models.
 
 These models define the contract between frontend and backend:
-    - HealthCheckResponse: Health check status
     - ErrorResponse: Standard error format
     - AssessmentWithTTSResponse: Combined assessment + TTS response
 """
@@ -14,17 +13,9 @@ from pydantic import BaseModel, Field
 from models.assessment_models import AzureAnalysisResult, OverallScores
 
 __all__ = [
-    "HealthCheckResponse",
     "ErrorResponse",
     "AssessmentWithTTSResponse",
 ]
-
-
-class HealthCheckResponse(BaseModel):
-    """Health check response."""
-
-    status: str = Field(description="Service health status")
-    version: str = Field(description="API version")
 
 
 class ErrorResponse(BaseModel):

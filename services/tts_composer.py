@@ -1,4 +1,26 @@
-"""Service for composing final TTS audio from static and dynamic segments."""
+"""
+TTS Narration Composer - Builds final audio feedback from static and dynamic segments.
+
+This service composes the final TTS audio by combining:
+    - Static clips: Pre-recorded intros/outros from TTSAssetLoader
+    - Dynamic segments: Error-specific TTS from TTSCacheService (Gemini TTS API)
+
+Composition Logic:
+    - Perfect reading (no errors):
+        → Single "perfect_intro" clip
+    
+    - Has errors:
+        → "needs_work_intro" clip
+        → Dynamic TTS for each error (word + issue + suggestion)
+        → "closing_cheer" clip
+
+Audio Processing:
+    - Concatenation: pydub's sum() for seamless joining
+    - Normalization: Loudness normalization to prevent volume jumps
+    - Export: Final audio exported as WAV bytes
+
+Used by: AssessmentService.generate_tts_narration_async()
+"""
 
 import io
 from dataclasses import dataclass
@@ -19,16 +41,38 @@ class TTSNarrationComposer:
     cache_service: TTSCacheService
 
     def compose(self, assessment_result: AzureAnalysisResult) -> bytes:
-        """Build final audio from assessment result.
+        """
+        Compose final TTS audio from assessment result.
+
+        This method builds the complete audio narration by combining static clips
+        with dynamically generated TTS for specific error corrections.
+
+        Flow:
+            [1] Check if perfect reading (no word_level_feedback):
+                → Return single "perfect_intro" clip
+            
+            [2] If has errors, build multi-segment audio:
+                → Add "needs_work_intro" clip
+                → For each error in word_level_feedback:
+                    - Build error text: "{issue} {suggestion}"
+                    - Get cached or generate TTS via cache_service
+                    - Convert bytes to AudioSegment
+                    - Append to segments
+                → Add "closing_cheer" clip
+            
+            [3] Concatenate all segments (pydub's sum())
+            [4] Normalize loudness to prevent volume jumps
+            [5] Export as WAV bytes
 
         Args:
-            assessment_result: The assessment result containing error information
+            assessment_result: Assessment result containing word_level_feedback (specific_errors)
 
         Returns:
             bytes: Final composed audio as WAV bytes
 
         Raises:
-            ValueError: If assets are not available or composition fails
+            ValueError: If required assets (intro/outro) are missing
+            Exception: If TTS generation or audio processing fails
         """
         try:
             # Handle perfect reading case (no errors)

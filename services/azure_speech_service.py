@@ -1,19 +1,29 @@
 """
-Azure Speech Pronunciation Assessment Service.
+Azure Speech SDK Pronunciation Assessment Service.
 
-Step 2 in the pipeline: Sends audio to Azure and receives pronunciation scores.
+This module handles communication with Azure Speech Service for pronunciation scoring.
+It's called by AssessmentService (gemini_service.py) as step 2 in the pipeline.
 
 Flow:
-    [2.1] Receive audio bytes and reference text from AssessmentService
-    [2.2] Build pronunciation assessment config (HundredMark, Phoneme, Comprehensive)
-    [2.3] Configure Speech SDK recognizer with pronunciation assessment
-    [2.4] Push audio stream and recognize (async)
-    [2.5] Return parsed Azure response with scores and word-level analysis
+    [1] Receive audio bytes and reference text from AssessmentService
+    [2] Configure Azure Speech SDK with pronunciation assessment settings
+        - Grading system: HundredMark (0-100 scale)
+        - Granularity: Phoneme (detailed word-level analysis)
+        - Prosody assessment: Enabled for en-US only
+        - Miscue detection: Configurable (detects omissions, insertions, mispronunciations)
+    [3] Create push audio stream and recognizer
+    [4] Push audio data and run recognition (async via thread pool)
+    [5] Parse and return Azure response with scores and word-level data
 
-Optimization:
-    - Speech SDK handles connection pooling and streaming internally
-    - Async recognition for non-blocking I/O
-    - Prosody assessment enabled for en-US
+Response Structure:
+    - RecognitionStatus: "Success", "NoMatch", or error
+    - NBest[0].PronunciationAssessment: Overall scores (PronScore, AccuracyScore, etc.)
+    - NBest[0].Words[]: Word-level scores and phoneme details
+
+Performance:
+    - Async execution: Runs in thread pool (Speech SDK is synchronous)
+    - Connection pooling: Handled internally by Speech SDK
+    - Streaming: Push stream allows efficient audio transfer
 """
 
 import asyncio
@@ -33,25 +43,45 @@ async def assess_pronunciation_async(
     config: AppConfig,
 ) -> dict[str, Any]:
     """
-    Step 2: Send audio to Azure Speech for pronunciation assessment using SDK.
+    Send audio to Azure Speech SDK for pronunciation assessment (async).
+
+    This function wraps the synchronous Azure Speech SDK in an async interface
+    by running recognition in a thread pool executor.
 
     Flow:
-        [2.1] Validate inputs
-        [2.2] Build pronunciation assessment config (HundredMark, Phoneme, Comprehensive)
-        [2.3] Configure Speech SDK recognizer with pronunciation assessment
-        [2.4] Push audio stream and recognize (async)
-        [2.5] Return assessment results
+        [1] Validate inputs (audio bytes and reference text)
+        [2] Configure Speech SDK with subscription key and region
+        [3] Build pronunciation assessment config:
+            - Grading: HundredMark (0-100 scale)
+            - Granularity: Phoneme (word and phoneme-level details)
+            - Prosody: Enabled for en-US (rhythm/intonation scoring)
+            - Miscue: Configurable (detects omissions, insertions, mispronunciations)
+        [4] Create push audio stream and recognizer
+        [5] Apply pronunciation config to recognizer
+        [6] Run recognition in thread pool (SDK is synchronous):
+            - Push audio bytes to stream
+            - Close stream
+            - Call recognize_once()
+            - Parse JSON result
+        [7] Handle recognition results:
+            - Success: Return parsed JSON with scores and word data
+            - NoMatch: Return empty result structure
+            - Error: Raise AudioProcessingError
 
     Args:
-        audio_bytes: Raw audio bytes (Azure SDK handles format conversion)
-        reference_text: Expected sentence
-        config: Application configuration
+        audio_bytes: Raw audio bytes (WAV/WebM format, SDK handles conversion)
+        reference_text: Expected sentence for pronunciation comparison
+        config: Application configuration (Speech key, region, language, settings)
 
     Returns:
-        dict: Azure response with RecognitionStatus, NBest[0].PronunciationAssessment, Words[]
+        dict: Azure Speech API response containing:
+            - RecognitionStatus: "Success", "NoMatch", or error
+            - NBest[0].PronunciationAssessment: Overall scores (PronScore, AccuracyScore, FluencyScore, etc.)
+            - NBest[0].Words[]: Word-level scores and phoneme details
+            - NBest[0].Display: Recognized text
 
     Raises:
-        AudioProcessingError: If audio is empty or API fails
+        AudioProcessingError: If audio/text is empty, or Azure SDK fails
     """
     if not audio_bytes:
         raise AudioProcessingError("audio_bytes cannot be empty")
@@ -72,7 +102,7 @@ async def assess_pronunciation_async(
         speech_config.request_word_level_timestamps()
 
         # [2.3] Build pronunciation assessment config
-        enable_prosody = config.speech_language_code.lower() == "en-us"
+        enable_prosody = config.speech_language_code
         pronunciation_config = speechsdk.PronunciationAssessmentConfig(
             reference_text=reference_text.strip(),
             grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
@@ -82,10 +112,6 @@ async def assess_pronunciation_async(
         # Enable prosody for en-US only
         if enable_prosody:
             pronunciation_config.enable_prosody_assessment()
-
-        # Enable miscue detection
-        if config.speech_enable_miscue:
-            pronunciation_config.enable_miscue = True
 
         # Create push stream for audio
         push_stream = speechsdk.audio.PushAudioInputStream()

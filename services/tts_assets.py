@@ -1,4 +1,20 @@
-"""Service for loading and serving pre-generated TTS audio clips."""
+"""
+TTS Asset Loader - Manages pre-recorded audio clips for narration.
+
+This service loads and serves static audio clips used in TTS narration composition.
+It's used by TTSNarrationComposer to build the final audio feedback.
+
+Asset Categories:
+    - perfect_intro: Clips for perfect pronunciation (e.g., "Excellent! Your pronunciation is perfect!")
+    - needs_work_intro: Clips for introducing error corrections (e.g., "Let's work on a few things...")
+    - closing_cheer: Clips for ending narration (e.g., "Keep practicing!")
+
+Architecture:
+    - Manifest-driven: Audio clips defined in manifest.json
+    - Preloading: All clips loaded into memory at initialization
+    - Random selection: pick() returns random variant for variety
+    - Validation: Pydantic models ensure manifest structure is correct
+"""
 
 import json
 import random
