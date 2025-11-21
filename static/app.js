@@ -16,6 +16,7 @@ document.addEventListener('alpine:init', () => {
         resultTitle: "",
         resultMessage: "",
         errors: [],
+        scores: null,
         mediaRecorder: null,
         audioChunks: [],
 
@@ -97,6 +98,7 @@ document.addEventListener('alpine:init', () => {
         async startRecording() {
             this.results = false;
             this.audioChunks = [];
+            this.scores = null;
             this.transitionTo(AppState.RECORDING);
             this.currentAnimation = "greetings";
 
@@ -174,7 +176,7 @@ document.addEventListener('alpine:init', () => {
                     audioUrl = URL.createObjectURL(blob);
                 }
 
-                this.displayResults(data.assessment, audioUrl);
+                this.displayResults(data, audioUrl);
             } catch (error) {
                 console.error("Error:", error);
                 alert(`Failed: ${error.message}`);
@@ -185,34 +187,44 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        displayResults(assessment, audioUrl = null) {
-            const errors = assessment.specific_errors || [];
-            this.errors = errors;
+        displayResults(data, audioUrl = null) {
+            // New Azure-based response format
+            const errors = data.word_level_feedback || [];
+            const scores = data.overall_scores || {};
+            const summaryText = data.summary_text || "";
 
-            // Determine result state
+            this.errors = errors;
+            this.scores = scores;
+
+            // Use pronunciation score to determine result state
+            const pronScore = scores.pronunciation || 0;
+
             let animation = "winner";
             let title = "Perfect Pronunciation!";
-            let message = "Amazing! No errors detected.";
+            let message = summaryText || "Amazing! No errors detected.";
             let statusIcon = "check-circle";
 
-            if (errors.length > 0) {
-                const criticalCount = errors.filter((e) => e.severity === "critical").length;
-                if (errors.length <= 2 && criticalCount === 0) {
-                    animation = "happy";
-                    title = "Great Job!";
-                    message = "Just a few minor improvements needed.";
-                    statusIcon = "hand-thumbs-up";
-                } else if (errors.length <= 4) {
-                    animation = "cheerful";
-                    title = "Good Effort!";
-                    message = "Keep practicing!";
-                    statusIcon = "emoji-smile";
-                } else {
-                    animation = "upset";
-                    title = "Needs Practice";
-                    message = "Let's work on these areas together.";
-                    statusIcon = "exclamation-circle";
-                }
+            if (pronScore >= 90) {
+                animation = "winner";
+                title = "Perfect Pronunciation!";
+                statusIcon = "check-circle";
+            } else if (pronScore >= 75) {
+                animation = "happy";
+                title = "Great Job!";
+                statusIcon = "hand-thumbs-up";
+            } else if (pronScore >= 60) {
+                animation = "cheerful";
+                title = "Good Effort!";
+                statusIcon = "emoji-smile";
+            } else {
+                animation = "upset";
+                title = "Needs Practice";
+                statusIcon = "exclamation-circle";
+            }
+
+            // Override message with summary_text if available
+            if (summaryText) {
+                message = summaryText;
             }
 
             this.currentAnimation = animation;
@@ -220,7 +232,9 @@ document.addEventListener('alpine:init', () => {
             this.resultMessage = message;
             this.results = true;
 
-            const statusMsg = errors.length === 0 ? "Perfect!" : `Found ${errors.length} area(s) to improve`;
+            const statusMsg = pronScore >= 85
+                ? `Score: ${Math.round(pronScore)}% - Excellent!`
+                : `Score: ${Math.round(pronScore)}% - ${errors.length} area(s) to improve`;
             this.transitionTo(AppState.RESULTS, statusMsg, statusIcon);
 
             // Play Audio

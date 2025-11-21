@@ -1,4 +1,4 @@
-"""Service layer for Gemini API interactions."""
+"""Service for pronunciation assessment using Azure Speech and Gemini."""
 
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -10,60 +10,48 @@ import logfire
 from pydantic import ValidationError
 
 from config import AppConfig
-from exceptions import AudioUploadError, InvalidAssessmentResponseError
-from models.assessment_models import AssessmentResult, get_gemini_response_schema
-from prompts import SYSTEM_PROMPT, build_assessment_prompt, build_tts_narration_prompt
-from utils import pcm_to_wav, temp_audio_file
+from exceptions import AudioProcessingError, InvalidAssessmentResponseError
+from models.assessment_models import AzureAnalysisResult, get_azure_analysis_response_schema
+from prompts import AZURE_ANALYSIS_SYSTEM_PROMPT, build_tts_narration_prompt, build_azure_analysis_prompt
+from services.azure_speech_service import assess_pronunciation_with_azure, AzureSpeechConfig
+from utils import pcm_to_wav
 
 
 @dataclass
-class GeminiAssessmentService:
+class AssessmentService:
+    """Service for pronunciation assessment using Azure Speech and Gemini."""
+
     config: AppConfig
     _composer: object = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
-        """Initialize TTSNarrationComposer when tts_enable_optimization is True."""
+        """Initialize TTS composer if optimization is enabled."""
         if self.config.tts_enable_optimization:
             try:
                 self._composer = self._initialize_composer()
-                logfire.info("TTS optimization enabled with composer")
+                logfire.info("TTS composer initialized")
             except Exception as e:
-                logfire.warning(f"TTS optimization unavailable: {e}. Using fallback.")
+                logfire.warn("TTS composer unavailable, using fallback", error=str(e))
                 self._composer = None
-        else:
-            logfire.info("TTS optimization disabled, using legacy TTS")
-            self._composer = None
 
     @cached_property
     def client(self):
-        # Use v1alpha API for Gemini 3 features (thinking_level)
+        """Gemini API client."""
         return genai.Client(
-            api_key=self.config.gemini_api_key, http_options={"api_version": "v1alpha"}
+            api_key=self.config.gemini_api_key,
+            http_options={"api_version": "v1alpha"}
         )
 
     def _initialize_composer(self):
-        """Initialize TTSNarrationComposer with dependencies.
-
-        Instantiates TTSAssetLoader, TTSCacheService, and TTSNarrationComposer
-        with configuration from AppConfig.
-
-        Returns:
-            TTSNarrationComposer: Initialized composer instance
-
-        Raises:
-            Exception: If initialization fails (e.g., missing assets)
-        """
+        """Initialize TTS composer with dependencies."""
         from services.tts_assets import TTSAssetLoader
         from services.tts_cache import TTSCacheService
         from services.tts_composer import TTSNarrationComposer
 
-        # Initialize asset loader (will raise exception if initialization fails)
         asset_loader = TTSAssetLoader(
             manifest_path=Path(self.config.tts_manifest_path),
             assets_dir=Path(self.config.tts_assets_dir),
         )
-
-        # Initialize cache service
         cache_service = TTSCacheService(
             cache_dir=Path(self.config.tts_cache_dir),
             cache_size_mb=self.config.tts_cache_size_mb,
@@ -74,171 +62,117 @@ class GeminiAssessmentService:
                 "voice_style_prompt": self.config.tts_voice_style_prompt,
             },
         )
-
-        # Initialize composer
-        composer = TTSNarrationComposer(
-            asset_loader=asset_loader, cache_service=cache_service
-        )
-
-        logfire.info("TTSNarrationComposer initialized successfully")
-        return composer
-
-    def _upload_audio_file(self, audio_data_bytes: bytes):
-        """Upload WAV audio file to Gemini API using temporary file.
-
-        Frontend sends 16kHz mono WAV audio optimized for speech recognition.
-        No conversion needed - direct upload for best quality.
-
-        Args:
-            audio_data_bytes: WAV audio data from frontend
-
-        Returns:
-            Uploaded file object from Gemini API
-
-        Raises:
-            AudioUploadError: If audio upload fails
-        """
-        try:
-            import time
-
-            logfire.debug(
-                f"Uploading {len(audio_data_bytes)} bytes of WAV audio to Gemini"
-            )
-
-            with temp_audio_file(
-                audio_data_bytes, self.config.temp_file_extension
-            ) as temp_path:
-                return self.client.files.upload(
-                    file=temp_path,
-                    config=types.UploadFileConfig(
-                        mime_type=self.config.recorded_audio_mime_type,
-                        display_name=f"assessment_{int(time.time())}",
-                    ),
-                )
-
-        except Exception as e:
-            logfire.error(f"Audio upload failed: {e}")
-            raise AudioUploadError(f"Failed to upload audio: {e}") from e
+        return TTSNarrationComposer(asset_loader=asset_loader, cache_service=cache_service)
 
     def assess_pronunciation(
-        self, audio_data_bytes: bytes, expected_sentence_text: str
-    ) -> AssessmentResult:
-        """Assess pronunciation of audio against expected text.
+        self,
+        audio_data_bytes: bytes,
+        expected_sentence_text: str,
+    ) -> AzureAnalysisResult:
+        """Assess pronunciation: Audio → Azure → Gemini analysis.
 
         Args:
-            audio_data_bytes: Audio data to assess
-            expected_sentence_text: Expected sentence text
+            audio_data_bytes: WAV audio (16kHz mono PCM)
+            expected_sentence_text: Reference sentence
 
         Returns:
-            AssessmentResult: Assessment result with scores and feedback
-
-        Raises:
-            AudioUploadError: If audio upload fails
-            InvalidAssessmentResponseError: If response validation fails
-            Exception: If API call fails
+            AzureAnalysisResult: Scores and learner-friendly feedback
         """
-        try:
-            uploaded_file = self._upload_audio_file(audio_data_bytes)
-            if not uploaded_file:
-                logfire.error("Failed to upload audio file")
-                raise AudioUploadError("Failed to upload audio file to Gemini API")
+        if not audio_data_bytes:
+            raise AudioProcessingError("Audio data is empty")
+        if not expected_sentence_text or not expected_sentence_text.strip():
+            raise AudioProcessingError("Reference text is empty")
 
-            # Gemini 3 thinking is ALWAYS ON (defaults to HIGH if not specified)
-            # We explicitly set LOW for optimal latency while maintaining quality
-            # Media resolution set to MEDIUM for optimal balance of quality and token usage
+        # Step 1: Azure pronunciation assessment
+        logfire.info("Step 1: Sending audio to Azure", audio_bytes=len(audio_data_bytes))
+
+        azure_config = AzureSpeechConfig(
+            speech_key=self.config.speech_key,
+            speech_region=self.config.speech_region,
+            language_code=self.config.speech_language_code,
+        )
+
+        azure_result = assess_pronunciation_with_azure(
+            audio_bytes=audio_data_bytes,
+            reference_text=expected_sentence_text,
+            language_code=self.config.speech_language_code,
+            config=azure_config,
+        )
+
+        recognition_status = azure_result.get("RecognitionStatus", "Unknown")
+        if recognition_status != "Success":
+            logfire.warn("Azure recognition failed", status=recognition_status)
+            return AzureAnalysisResult(
+                summary_text="I couldn't hear you clearly. Please try again!",
+                overall_scores={"pronunciation": 0, "accuracy": 0, "fluency": 0, "completeness": 0, "prosody": 0},
+                word_level_feedback=[],
+                prosody_feedback=None,
+            )
+
+        # Log Azure scores
+        nbest = azure_result.get("NBest", [{}])[0]
+        azure_scores = nbest.get("PronunciationAssessment", {})
+        logfire.info(
+            "Azure assessment complete",
+            pron_score=azure_scores.get("PronScore"),
+            accuracy=azure_scores.get("AccuracyScore"),
+            fluency=azure_scores.get("FluencyScore"),
+        )
+
+        # Step 2: Gemini analysis
+        logfire.info("Step 2: Sending Azure results to Gemini for analysis")
+        return self._analyze_with_gemini(azure_result, expected_sentence_text)
+
+    def _analyze_with_gemini(self, azure_result: dict, reference_text: str) -> AzureAnalysisResult:
+        """Send Azure results to Gemini for learner-friendly analysis."""
+        try:
+            prompt = build_azure_analysis_prompt(azure_result, reference_text)
+
             response = self.client.models.generate_content(
                 model=self.config.model_name,
-                contents=[
-                    build_assessment_prompt(expected_sentence_text),
-                    types.Part(
-                        file_data=types.FileData(
-                            file_uri=uploaded_file.uri,
-                            mime_type=uploaded_file.mime_type,
-                        ),
-                        media_resolution=types.PartMediaResolution(
-                            level=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM
-                        ),
-                    ),
-                ],
+                contents=prompt,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=AZURE_ANALYSIS_SYSTEM_PROMPT,
                     temperature=self.config.assessment_temperature,
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
-                    response_schema=get_gemini_response_schema(),
-                    thinking_config=types.ThinkingConfig(
-                        thinking_level=types.ThinkingLevel.LOW
-                    ),
+                    response_schema=get_azure_analysis_response_schema(),
                 ),
             )
-            result = AssessmentResult.model_validate_json(response.text)
 
-            # Log token usage for monitoring and optimization
+            result = AzureAnalysisResult.model_validate_json(response.text)
+
             logfire.info(
-                "Assessment completed",
-                thinking_tokens=response.usage_metadata.thoughts_token_count,
+                "Gemini analysis complete",
                 prompt_tokens=response.usage_metadata.prompt_token_count,
                 output_tokens=response.usage_metadata.candidates_token_count,
-                total_tokens=response.usage_metadata.total_token_count,
+                feedback_items=len(result.word_level_feedback),
             )
-
-            # Debug: Log errors from Gemini
-            if result.specific_errors:
-                logfire.info(
-                    f"Gemini detected {len(result.specific_errors)} errors: {[(e.word, e.issue) for e in result.specific_errors]}"
-                )
 
             return result
 
         except ValidationError as e:
-            logfire.error(f"Invalid assessment response: {e}")
-            raise InvalidAssessmentResponseError(
-                f"Invalid assessment response: {e}"
-            ) from e
-        except AudioUploadError:
-            raise
+            logfire.error("Invalid Gemini response", error=str(e))
+            raise InvalidAssessmentResponseError(f"Invalid Gemini response: {e}") from e
         except Exception as e:
-            logfire.error(f"Error during assessment: {e}")
+            logfire.error("Gemini analysis failed", error=str(e))
             raise
 
-    def generate_tts_narration(self, assessment_result: AssessmentResult) -> bytes:
-        """Generate TTS audio from assessment result.
-
-        Uses optimized composer path if available, otherwise falls back to legacy
-        single-call TTS generation.
-
-        Args:
-            assessment_result: The assessment result to generate narration for
-
-        Returns:
-            bytes: WAV audio data, or None if generation fails
-        """
-        # Use optimized path if composer is available
+    def generate_tts_narration(self, assessment_result: AzureAnalysisResult) -> bytes:
+        """Generate TTS audio from assessment result."""
         if self._composer:
             try:
-                logfire.debug("Using optimized TTS composer")
                 return self._composer.compose(assessment_result)
             except Exception as e:
-                logfire.warning(f"TTS composition failed: {e}. Using fallback.")
+                logfire.warn("TTS composer failed, using fallback", error=str(e))
 
-        # Fallback to legacy implementation
-        logfire.debug("Using legacy TTS generation")
-        return self._generate_tts_legacy(assessment_result)
+        return self._generate_tts_fallback(assessment_result)
 
-    def _generate_tts_legacy(self, assessment_result: AssessmentResult) -> bytes:
-        """Original single-call TTS generation (current implementation).
-
-        This method preserves the original monolithic TTS approach as a fallback
-        when the optimized composer is unavailable or fails.
-
-        Args:
-            assessment_result: The assessment result to generate narration for
-
-        Returns:
-            bytes: WAV audio data, or None if generation fails
-        """
+    def _generate_tts_fallback(self, assessment_result: AzureAnalysisResult) -> bytes:
+        """Fallback TTS generation."""
         try:
             narration_text = build_tts_narration_prompt(assessment_result)
+            logfire.info("Generating TTS", text_length=len(narration_text))
 
             response = self.client.models.generate_content(
                 model=self.config.tts_model_name,
@@ -258,8 +192,13 @@ class GeminiAssessmentService:
             if response.candidates and response.candidates[0].content.parts:
                 for part in response.candidates[0].content.parts:
                     if part.inline_data:
-                        return pcm_to_wav(part.inline_data.data)
+                        wav_data = pcm_to_wav(part.inline_data.data)
+                        logfire.info("TTS generated", audio_bytes=len(wav_data))
+                        return wav_data
+
+            logfire.warn("TTS returned no audio")
+            return None
 
         except Exception as e:
-            logfire.error(f"Error generating TTS: {e}")
+            logfire.error("TTS generation failed", error=str(e))
             return None

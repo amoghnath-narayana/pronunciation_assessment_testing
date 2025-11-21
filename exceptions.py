@@ -10,14 +10,14 @@ class AssessmentError(Exception):
         super().__init__(self.message)
 
 
-class AudioUploadError(AssessmentError):
-    """Exception raised when audio upload to Gemini API fails."""
-
-    pass
-
-
 class AudioProcessingError(AssessmentError):
-    """Exception raised when audio processing fails."""
+    """Exception raised when audio processing fails.
+
+    This includes:
+    - Empty audio data
+    - Azure Speech API errors
+    - Invalid audio format
+    """
 
     pass
 
@@ -35,6 +35,11 @@ class TTSGenerationError(AssessmentError):
 
 
 class ConfigurationError(AssessmentError):
-    """Exception raised when configuration is invalid."""
+    """Exception raised when configuration is invalid.
+
+    This includes:
+    - Missing environment variables (SPEECH_KEY, SPEECH_REGION, etc.)
+    - Invalid configuration values
+    """
 
     pass
