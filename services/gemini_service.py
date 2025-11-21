@@ -4,16 +4,14 @@ Assessment Service - Orchestrates the pronunciation assessment pipeline.
 Flow:
     [1] Receive audio + expected text from API endpoint
     [2] Send to Azure Speech for pronunciation scores
-    [3] If score >= 90: Use template response (skip Gemini) - OPTIMIZATION
-    [4] If score < 90: Send to Gemini for learner-friendly feedback
-    [5] Generate TTS audio feedback (async, can run in parallel)
+    [3] Send to Gemini for learner-friendly feedback and word-level analysis
+    [4] Generate TTS audio feedback (async, can run in parallel)
 
 Optimizations:
-    - Async Azure calls with connection pooling
-    - High score shortcut skips Gemini (~500-1000ms saved)
+    - Async Azure calls with Speech SDK
     - Singleton service pattern (initialized once at startup)
     - Async TTS generation for parallel execution (~300-500ms saved)
-    - Cached TTS for high-score response (instant for repeated perfect scores)
+    - TTS caching for repeated responses
 """
 
 import asyncio
@@ -32,7 +30,6 @@ from exceptions import AudioProcessingError, InvalidAssessmentResponseError
 from models.assessment_models import (
     AzureAnalysisResult,
     OverallScores,
-    get_azure_analysis_response_schema,
 )
 from prompts import (
     AZURE_ANALYSIS_SYSTEM_PROMPT,
@@ -41,9 +38,6 @@ from prompts import (
 )
 from services.azure_speech_service import assess_pronunciation_async, AzureSpeechConfig
 from utils import pcm_to_wav
-
-# High score threshold - skip Gemini for scores above this
-HIGH_SCORE_THRESHOLD = 90
 
 
 @dataclass
@@ -114,8 +108,7 @@ class AssessmentService:
         Flow:
             [1] Validate inputs
             [2] Call Azure Speech API (async)
-            [3] If score >= 90: Return template response (skip Gemini)
-            [4] If score < 90: Call Gemini for friendly feedback
+            [3] Call Gemini for friendly feedback and word-level analysis
 
         Args:
             audio_data_bytes: Recorded audio (WAV/WebM)
@@ -137,6 +130,7 @@ class AssessmentService:
             speech_key=self.config.speech_key,
             speech_region=self.config.speech_region,
             language_code=self.config.speech_language_code,
+            enable_miscue=self.config.speech_enable_miscue,
         )
 
         azure_result = await assess_pronunciation_async(
@@ -148,6 +142,10 @@ class AssessmentService:
 
         # Handle recognition failure
         recognition_status = azure_result.get("RecognitionStatus", "Unknown")
+        display_text = azure_result.get("NBest", [{}])[0].get("Display", "") or ""
+        logfire.info(
+            f"Azure returned recognition | status={recognition_status} | display='{display_text[:120]}'"
+        )
         if recognition_status != "Success":
             logfire.warn("Azure recognition failed", status=recognition_status)
             return AzureAnalysisResult(
@@ -162,42 +160,40 @@ class AssessmentService:
         azure_scores = nbest.get("PronunciationAssessment", {})
         pron_score = azure_scores.get("PronScore", 0)
 
-        logfire.info("Step 2 complete: Azure scores", pron=pron_score)
+        accuracy = azure_scores.get("AccuracyScore", 0)
+        fluency = azure_scores.get("FluencyScore", 0)
+        completeness = azure_scores.get("CompletenessScore", 0)
+        prosody = azure_scores.get("ProsodyScore", 0)
+        word_count = len(nbest.get("Words", []))
 
-        # [3] HIGH SCORE SHORTCUT - Skip Gemini for excellent pronunciation
-        if pron_score >= HIGH_SCORE_THRESHOLD:
-            logfire.info(f"Step 3: High score ({pron_score}) - skipping Gemini")
-            return self._build_high_score_response(azure_scores)
-
-        # [4] Call Gemini for learner-friendly feedback
-        logfire.info("Step 4: Sending to Gemini for analysis")
-        return self._analyze_with_gemini(azure_result, expected_sentence_text)
-
-    def _build_high_score_response(self, azure_scores: dict) -> AzureAnalysisResult:
-        """
-        Step 3: Build template response for high scores (skips Gemini).
-
-        This saves ~500-1000ms by avoiding Gemini API call when
-        the pronunciation is already excellent.
-
-        Args:
-            azure_scores: PronunciationAssessment dict from Azure
-
-        Returns:
-            AzureAnalysisResult: Pre-built encouraging response
-        """
-        return AzureAnalysisResult(
-            summary_text="Excellent! Your pronunciation is perfect!",
-            overall_scores=OverallScores(
-                pronunciation=azure_scores.get("PronScore", 0),
-                accuracy=azure_scores.get("AccuracyScore", 0),
-                fluency=azure_scores.get("FluencyScore", 0),
-                completeness=azure_scores.get("CompletenessScore", 0),
-                prosody=azure_scores.get("ProsodyScore", 0),
-            ),
-            word_level_feedback=[],
-            prosody_feedback=None,
+        logfire.info(
+            (
+                f"Step 2 complete: Azure scores | pron={pron_score:.2f} "
+                f"acc={accuracy:.2f} flu={fluency:.2f} comp={completeness:.2f} pros={prosody:.2f} "
+                f"words={word_count}"
+            )
         )
+
+        # If Azure returned zeros (no evidence of scoring), don't send junk to Gemini
+        non_zero_scores = [
+            s for s in [pron_score, accuracy, fluency, completeness, prosody] if s
+        ]
+        if not non_zero_scores:
+            logfire.warn(
+                "Azure returned zero scores; treating as inaudible or assessment failure",
+                display=display_text[:120],
+                words=word_count,
+            )
+            return AzureAnalysisResult(
+                summary_text="I couldn't hear you clearly. Please try again!",
+                overall_scores=OverallScores(),
+                word_level_feedback=[],
+                prosody_feedback=None,
+            )
+
+        # [3] Call Gemini for learner-friendly feedback (always, to get word-level analysis)
+        logfire.info("Step 3: Sending to Gemini for analysis")
+        return self._analyze_with_gemini(azure_result, expected_sentence_text)
 
     def _analyze_with_gemini(
         self, azure_result: dict, reference_text: str
@@ -214,11 +210,14 @@ class AssessmentService:
                     temperature=self.config.assessment_temperature,
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
-                    response_schema=get_azure_analysis_response_schema(),
+                    response_schema=AzureAnalysisResult,
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=self.config.assessment_thinking_budget
+                    ),
                 ),
             )
 
-            result = AzureAnalysisResult.model_validate_json(response.text)
+            result = self._parse_gemini_response(response)
 
             logfire.info(
                 "Gemini analysis complete",
@@ -235,6 +234,103 @@ class AssessmentService:
         except Exception as e:
             logfire.error("Gemini analysis failed", error=str(e))
             raise
+
+    def _parse_gemini_response(
+        self, response: types.GenerateContentResponse
+    ) -> AzureAnalysisResult:
+        """
+        Parse Gemini structured output into AzureAnalysisResult.
+
+        The Gemini client returns the structured object in `response.parsed` when
+        `response_schema` is provided, so no manual JSON parsing is needed.
+        """
+        parsed = getattr(response, "parsed", None)
+        text_preview = (getattr(response, "text", None) or "")[:300]
+        candidates = getattr(response, "candidates", None) or []
+        candidate_texts: list[str] = []
+        candidate_details: list[dict] = []
+        for cand in candidates:
+            if not getattr(cand, "content", None):
+                candidate_details.append(
+                    {
+                        "has_content": False,
+                        "finish_reason": getattr(cand, "finish_reason", None),
+                        "safety": getattr(cand, "safety_ratings", None),
+                    }
+                )
+                continue
+
+            parts = cand.content.parts or []
+            parts_info = []
+            for part in parts:
+                parts_info.append(
+                    {
+                        "text": bool(getattr(part, "text", None)),
+                        "function_call": bool(getattr(part, "function_call", None)),
+                        "function_response": bool(
+                            getattr(part, "function_response", None)
+                        ),
+                        "inline_data": bool(getattr(part, "inline_data", None)),
+                    }
+                )
+                if part and getattr(part, "text", None):
+                    candidate_texts.append(part.text[:200])
+
+            candidate_details.append(
+                {
+                    "finish_reason": getattr(cand, "finish_reason", None),
+                    "safety": getattr(cand, "safety_ratings", None),
+                    "parts": parts_info,
+                }
+            )
+
+        usage = getattr(response, "usage_metadata", None)
+        prompt_tokens = (
+            getattr(usage, "prompt_token_count", None) if usage is not None else None
+        )
+        candidate_tokens = (
+            getattr(usage, "candidates_token_count", None)
+            if usage is not None
+            else None
+        )
+        finish_reasons = [getattr(c, "finish_reason", None) for c in candidates]
+
+        if parsed is None:
+            logfire.error(
+                "Gemini returned no structured output",
+                model=self.config.model_name,
+                text_preview=text_preview,
+                candidate_count=len(candidates),
+                candidate_texts=candidate_texts,
+                candidate_details=candidate_details,
+                finish_reasons=finish_reasons,
+                prompt_tokens=prompt_tokens,
+                candidate_tokens=candidate_tokens,
+            )
+            logfire.debug("Gemini raw response", response_repr=repr(response))
+            raise InvalidAssessmentResponseError("Gemini returned no structured output")
+
+        if hasattr(parsed, "model_dump"):
+            parsed = parsed.model_dump()
+
+        try:
+            return AzureAnalysisResult.model_validate(parsed)
+        except ValidationError as e:
+            logfire.error(
+                "Invalid Gemini structured output",
+                error=str(e),
+                model=self.config.model_name,
+                text_preview=text_preview,
+                candidate_count=len(candidates),
+                candidate_texts=candidate_texts,
+                candidate_details=candidate_details,
+                finish_reasons=finish_reasons,
+                prompt_tokens=prompt_tokens,
+                candidate_tokens=candidate_tokens,
+            )
+            raise InvalidAssessmentResponseError(
+                f"Invalid Gemini structured output: {e}"
+            ) from e
 
     def generate_tts_narration(self, assessment_result: AzureAnalysisResult) -> bytes:
         """Generate TTS audio from assessment result (sync version)."""

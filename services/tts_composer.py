@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import logfire
 from pydub import AudioSegment
 
-from models.assessment_models import AssessmentResult
+from models.assessment_models import AzureAnalysisResult
 from services.tts_assets import TTSAssetLoader
 from services.tts_cache import TTSCacheService
 
@@ -18,7 +18,7 @@ class TTSNarrationComposer:
     asset_loader: TTSAssetLoader
     cache_service: TTSCacheService
 
-    def compose(self, assessment_result: AssessmentResult) -> bytes:
+    def compose(self, assessment_result: AzureAnalysisResult) -> bytes:
         """Build final audio from assessment result.
 
         Args:

@@ -74,7 +74,7 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                     "required": ["word", "issue", "suggestion", "severity"],
                 },
             },
-            "prosody_feedback": {"type": ["string", "null"]},
+            "prosody_feedback": {"type": "string", "nullable": True},
         },
         "required": ["summary_text", "overall_scores", "word_level_feedback"],
     }

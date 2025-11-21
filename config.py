@@ -16,13 +16,18 @@ class AppConfig(BaseSettings):
     speech_region: str = Field(
         validation_alias=AliasChoices("SPEECH_REGION", "AZURE_SPEECH_REGION")
     )
-    speech_language_code: str = "en-IN"
+    # Use a PA-supported locale by default; override via env if needed
+    speech_language_code: str = "en-US"
+    speech_enable_miscue: bool = True
 
     # Gemini API Settings (for analysis and TTS only)
     gemini_api_key: str
     model_name: str
     assessment_temperature: float = 0.3
-    assessment_max_output_tokens: int = 512
+    # Higher default because thinking models can consume tokens before producing output
+    assessment_max_output_tokens: int = 10000
+    # Limit Gemini thinking depth (approx. "thinking level: low"); set None to use model default
+    assessment_thinking_budget: int | None = 256
 
     # TTS Settings
     tts_model_name: str

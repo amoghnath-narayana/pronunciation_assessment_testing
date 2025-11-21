@@ -16,7 +16,6 @@ from exceptions import AssessmentError
 
 __all__ = [
     "app",
-    "log_requests",
     "assessment_error_handler",
     "global_exception_handler",
     "root",
@@ -31,18 +30,12 @@ async def lifespan(app: FastAPI):
     Manage application lifespan events.
 
     Startup:
-        [1] Pre-warm HTTP clients for faster first request
-        [2] Initialize singleton services
+        [1] Initialize singleton services
     """
     # Startup
     logfire.info("Starting Pronunciation Assessment API")
 
-    # [1] Pre-warm HTTP client connections (~50-100ms saved on first request)
-    from services.azure_speech_service import warmup_http_client
-
-    await warmup_http_client()
-
-    # [2] Initialize singleton AssessmentService early
+    # [1] Initialize singleton AssessmentService early
     from api.routers.assessment import get_assessment_service
 
     get_assessment_service()
@@ -71,29 +64,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all HTTP requests with timing information."""
-    start_time = time.time()
-
-    # Log request
-    logfire.info(f"{request.method} {request.url.path}")
-
-    # Process request
-    response = await call_next(request)
-
-    # Log response time
-    process_time = time.time() - start_time
-    logfire.info(
-        f"{request.method} {request.url.path} completed in {process_time:.3f}s"
-    )
-
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
-
 
 # Global exception handler for custom exceptions
 @app.exception_handler(AssessmentError)
@@ -151,9 +121,6 @@ async def chrome_devtools():
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Configure logfire for local development
-    logfire.configure()
 
     uvicorn.run(
         "main:app",
