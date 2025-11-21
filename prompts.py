@@ -3,8 +3,7 @@
 import json
 
 # Concise system prompt for Gemini analysis
-AZURE_ANALYSIS_SYSTEM_PROMPT = """You analyze Azure Speech pronunciation scores for young Indian English learners (ages 5-7).
-Be encouraging. Use simple words. Focus on 1-2 key issues max."""
+AZURE_ANALYSIS_SYSTEM_PROMPT = """Analyze pronunciation for Indian English learners (ages 5-7). Be encouraging, use simple words, focus on 1-2 key issues."""
 
 
 def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
@@ -94,33 +93,19 @@ def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
         ],
     )
 
-    return f"""Expected Sentence: "{reference_text}"
-What Student Said: "{recognized_text}"
+    return f"""Expected: "{reference_text}"
+Said: "{recognized_text}"
 
-Overall Scores:
-- Pronunciation: {scores.get("PronScore", 0)}
-- Accuracy: {scores.get("AccuracyScore", 0)}
-- Fluency: {scores.get("FluencyScore", 0)}
-- Completeness: {scores.get("CompletenessScore", 0)}
-- Prosody: {scores.get("ProsodyScore", 0)}
+Scores: Pron={scores.get("PronScore", 0)} Acc={scores.get("AccuracyScore", 0)} Flu={scores.get("FluencyScore", 0)} Comp={scores.get("CompletenessScore", 0)} Pros={scores.get("ProsodyScore", 0)}
 
-Word-Level Details (with phoneme analysis):
+Words (phoneme data):
 {json.dumps(detailed_words, indent=2)}
 
-Instructions:
-1. FIRST: Compare the expected sentence with what the student actually said. If they said a DIFFERENT WORD (e.g., "bat" instead of "mat"), this is a CRITICAL error - tell them they said the wrong word!
-2. THEN: Analyze the phoneme-level data to identify which specific sounds were mispronounced.
-3. For each problematic word, explain which letter/sound was wrong and how to fix it.
-4. Use simple language for 5-7 year old Indian English learners.
+Analyze phonemes. Identify unclear sounds (accuracy<90 or phoneme<80). Max 3 feedback items.
+Note: Azure detects unclear sounds, not word substitutions.
 
 Return JSON:
-{{"summary_text":"<1-2 sentence encouragement>","overall_scores":{{"pronunciation":<n>,"accuracy":<n>,"fluency":<n>,"completeness":<n>,"prosody":<n>}},"word_level_feedback":[{{"word":"<word>","issue":"<which sound was wrong OR wrong word said>","suggestion":"<how to say it correctly>","severity":"critical|minor"}}],"prosody_feedback":"<rhythm tip or null>"}}
-
-Rules:
-- Word substitutions (saying wrong word) are ALWAYS "critical" severity
-- Focus on words with accuracy < 90 or phonemes with accuracy < 80
-- Max 3 items in word_level_feedback
-- Keep explanations very simple and encouraging"""
+{{"summary_text":"<encouragement>","overall_scores":{{"pronunciation":<n>,"accuracy":<n>,"fluency":<n>,"completeness":<n>,"prosody":<n>}},"word_level_feedback":[{{"word":"<word>","issue":"'<letter>' sound unclear","suggestion":"<simple tip>","severity":"critical|minor"}}],"prosody_feedback":"<tip or null>"}}"""
 
 
 

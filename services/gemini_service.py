@@ -59,7 +59,6 @@ class AssessmentService:
 
     config: AppConfig
     _composer: object = field(default=None, init=False, repr=False)
-    _high_score_tts_cache: bytes = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         """Initialize TTS composer for optimized audio generation."""
@@ -397,13 +396,19 @@ class AssessmentService:
         This method creates audio feedback by composing pre-recorded clips with
         dynamically generated TTS for specific error corrections.
 
+        Caching Strategy:
+            - Static clips (perfect_intro, needs_work_intro, closing_cheer): 
+              Cached in memory by TTSAssetLoader at startup
+            - Dynamic error segments (individual word corrections):
+              Cached on disk by TTSCacheService using (text, voice) as key
+            - Perfect pronunciation narration:
+              Just returns the "perfect_intro" static clip (no additional caching needed)
+
         Flow:
-            [1] Check in-memory cache for high-score template response
-            [2] If not cached, call TTS composer (runs in thread pool via asyncio.to_thread)
-            [3] TTS composer builds audio:
-                - Perfect reading: Single "perfect_intro" clip
-                - Has errors: "needs_work_intro" + dynamic error TTS + "closing_cheer"
-            [4] Cache high-score responses for future use
+            [1] Call TTS composer (runs in thread pool via asyncio.to_thread)
+            [2] TTS composer builds audio:
+                - Perfect reading: Single "perfect_intro" clip (from asset cache)
+                - Has errors: "needs_work_intro" + dynamic error TTS (from disk cache) + "closing_cheer"
 
         Args:
             assessment_result: Assessment result containing summary_text and word_level_feedback
@@ -413,18 +418,9 @@ class AssessmentService:
 
         Note:
             - Uses asyncio.to_thread for non-blocking execution
-            - TTS composer handles disk caching for dynamic segments
-            - High-score responses cached in memory (self._high_score_tts_cache)
+            - All caching is handled by TTSAssetLoader (static) and TTSCacheService (dynamic)
+            - No need for additional in-memory caching of full narrations
         """
-        # Check cache for high-score template response
-        if (
-            assessment_result.summary_text
-            == "Excellent! Your pronunciation is perfect!"
-            and self._high_score_tts_cache is not None
-        ):
-            logfire.info("Using cached high-score TTS")
-            return self._high_score_tts_cache
-
         # Use asyncio.to_thread for non-blocking execution
         if self._composer:
             try:
@@ -437,14 +433,5 @@ class AssessmentService:
         else:
             logfire.warn("TTS composer not available")
             return None
-
-        # Cache high-score TTS for future use
-        if (
-            assessment_result.summary_text
-            == "Excellent! Your pronunciation is perfect!"
-            and result is not None
-        ):
-            self._high_score_tts_cache = result
-            logfire.info("Cached high-score TTS for future use")
 
         return result
