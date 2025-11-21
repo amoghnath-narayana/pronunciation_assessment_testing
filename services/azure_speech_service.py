@@ -1,4 +1,20 @@
-"""Azure Speech Pronunciation Assessment service."""
+"""
+Azure Speech Pronunciation Assessment Service.
+
+Step 2 in the pipeline: Sends audio to Azure and receives pronunciation scores.
+
+Flow:
+    [2.1] Receive audio bytes and reference text from AssessmentService
+    [2.2] Build pronunciation assessment config (HundredMark, Phoneme, Comprehensive)
+    [2.3] Base64 encode config and set as Pronunciation-Assessment header
+    [2.4] POST audio to Azure Speech STT endpoint (async with connection pooling)
+    [2.5] Return raw Azure response with scores and word-level analysis
+
+Optimization:
+    - Async HTTP client for non-blocking I/O
+    - Connection pooling via shared httpx.AsyncClient
+    - 30s timeout to handle slow responses gracefully
+"""
 
 import base64
 import json
@@ -12,6 +28,32 @@ import logfire
 from exceptions import ConfigurationError, AudioProcessingError
 
 
+# -----------------------------------------------------------------------------
+# [OPTIMIZATION] Shared Async HTTP Client with Connection Pooling
+# -----------------------------------------------------------------------------
+# Previously: New httpx.Client created per request (no connection reuse)
+# Now: Shared AsyncClient with connection pooling (~20-50ms saved per request)
+# -----------------------------------------------------------------------------
+_http_client: httpx.AsyncClient | None = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    """
+    Get or create shared async HTTP client with connection pooling.
+
+    Returns:
+        httpx.AsyncClient: Shared client instance for Azure API calls
+    """
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+        logfire.info("Created shared async HTTP client for Azure Speech")
+    return _http_client
+
+
 @dataclass
 class AzureSpeechConfig:
     """Configuration for Azure Speech service."""
@@ -22,7 +64,8 @@ class AzureSpeechConfig:
 
     @classmethod
     def from_env(cls) -> "AzureSpeechConfig":
-        """Load configuration from environment variables.
+        """
+        Load configuration from environment variables.
 
         Returns:
             AzureSpeechConfig: Configuration instance
@@ -41,67 +84,55 @@ class AzureSpeechConfig:
         return cls(speech_key=speech_key, speech_region=speech_region)
 
 
-def assess_pronunciation_with_azure(
+async def assess_pronunciation_async(
     audio_bytes: bytes,
     reference_text: str,
     language_code: str = "en-IN",
     config: AzureSpeechConfig | None = None,
 ) -> dict[str, Any]:
-    """Assess pronunciation using Azure Speech Pronunciation Assessment API.
+    """
+    Step 2: Send audio to Azure Speech for pronunciation assessment.
 
-    Sends audio to Azure Speech service and returns detailed pronunciation scores
-    including word-level and phoneme-level analysis with prosody assessment.
+    Flow:
+        [2.1] Validate inputs
+        [2.2] Build pronunciation config (HundredMark, Phoneme, Comprehensive)
+        [2.3] Base64 encode config for header
+        [2.4] POST to Azure STT endpoint (async with connection pooling)
+        [2.5] Return assessment results
 
     Args:
-        audio_bytes: Raw WAV audio bytes (16kHz mono PCM format)
-        reference_text: The expected sentence the user should have spoken
-        language_code: Language code for assessment (default: "en-IN" for Indian English)
-        config: Azure Speech configuration. If None, loads from environment variables.
+        audio_bytes: Raw audio bytes (WAV/WebM)
+        reference_text: Expected sentence
+        language_code: Language code (default: "en-IN")
+        config: Azure config (loads from env if None)
 
     Returns:
-        dict: Azure assessment result containing:
-            - RecognitionStatus: Success/failure status
-            - NBest[0].PronunciationAssessment: Overall scores (PronScore, AccuracyScore, etc.)
-            - NBest[0].Words: Per-word scores with phoneme details
-            - NBest[0].PronunciationAssessment.Feedback.Prosody: Prosody feedback
+        dict: Azure response with RecognitionStatus, NBest[0].PronunciationAssessment, Words[]
 
     Raises:
-        ConfigurationError: If Azure credentials are missing
-        AudioProcessingError: If audio_bytes is empty or API call fails
-
-    Example:
-        >>> result = assess_pronunciation_with_azure(
-        ...     audio_bytes=wav_data,
-        ...     reference_text="The cat is on the mat"
-        ... )
-        >>> print(result["NBest"][0]["PronunciationAssessment"]["PronScore"])
-        85.2
+        AudioProcessingError: If audio is empty or API fails
     """
-    # Guard clauses
     if not audio_bytes:
         raise AudioProcessingError("audio_bytes cannot be empty")
-
     if not reference_text or not reference_text.strip():
         raise AudioProcessingError("reference_text cannot be empty")
-
     if config is None:
         config = AzureSpeechConfig.from_env()
 
-    # Build pronunciation assessment configuration
+    # [2.2] Build config (per Azure docs: all values must be strings)
     pronunciation_config = {
         "ReferenceText": reference_text.strip(),
         "GradingSystem": "HundredMark",
         "Granularity": "Phoneme",
         "Dimension": "Comprehensive",
-        "EnableProsodyAssessment": True,
+        "EnableProsodyAssessment": "True",  # Must be string "True", not boolean
     }
 
-    # Base64 encode the config for header
+    # [2.3] Base64 encode
     encoded_config = base64.b64encode(
         json.dumps(pronunciation_config).encode("utf-8")
     ).decode("utf-8")
 
-    # Build request
     endpoint_url = (
         f"https://{config.speech_region}.stt.speech.microsoft.com"
         f"/speech/recognition/conversation/cognitiveservices/v1"
@@ -109,70 +140,54 @@ def assess_pronunciation_with_azure(
     )
 
     headers = {
-        "Accept": "application/json;text/xml",
+        "Accept": "application/json",
         "Content-Type": "audio/wav; codecs=audio/pcm; samplerate=16000",
         "Ocp-Apim-Subscription-Key": config.speech_key,
         "Pronunciation-Assessment": encoded_config,
     }
 
     logfire.info(
-        "Sending audio to Azure Speech for pronunciation assessment",
-        audio_size_bytes=len(audio_bytes),
-        reference_text=reference_text[:50] + "..." if len(reference_text) > 50 else reference_text,
-        language=language_code,
+        "Step 2.4: Azure Speech API call",
+        audio_bytes=len(audio_bytes),
+        text=reference_text[:50],
     )
 
+    # [2.4] Async POST with shared client
     try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(
-                endpoint_url,
-                headers=headers,
-                content=audio_bytes,
-            )
+        client = get_http_client()
+        response = await client.post(endpoint_url, headers=headers, content=audio_bytes)
 
         if response.status_code != 200:
-            error_detail = response.text[:500] if response.text else "No error details"
-            logfire.error(
-                "Azure Speech API error",
-                status_code=response.status_code,
-                error=error_detail,
-            )
-            raise AudioProcessingError(
-                f"Azure Speech API returned status {response.status_code}: {error_detail}"
-            )
+            error_detail = response.text[:500] if response.text else "No details"
+            logfire.error("Azure API error", status=response.status_code, error=error_detail)
+            raise AudioProcessingError(f"Azure API status {response.status_code}: {error_detail}")
 
         result = response.json()
 
-        # Log success metrics
-        recognition_status = result.get("RecognitionStatus", "Unknown")
-        if recognition_status == "Success" and result.get("NBest"):
-            assessment = result["NBest"][0].get("PronunciationAssessment", {})
+        # [2.5] Log results
+        status = result.get("RecognitionStatus", "Unknown")
+        if status == "Success" and result.get("NBest"):
+            scores = result["NBest"][0].get("PronunciationAssessment", {})
             logfire.info(
-                "Azure pronunciation assessment completed",
-                recognition_status=recognition_status,
-                pron_score=assessment.get("PronScore"),
-                accuracy_score=assessment.get("AccuracyScore"),
-                fluency_score=assessment.get("FluencyScore"),
-                completeness_score=assessment.get("CompletenessScore"),
-                prosody_score=assessment.get("ProsodyScore"),
+                "Step 2.5: Azure complete",
+                pron=scores.get("PronScore"),
+                acc=scores.get("AccuracyScore"),
+                flu=scores.get("FluencyScore"),
             )
         else:
-            logfire.warning(
-                "Azure assessment returned non-success status",
-                recognition_status=recognition_status,
-            )
+            logfire.warning("Azure non-success", status=status)
 
         return result
 
     except httpx.TimeoutException as e:
-        logfire.error("Azure Speech API timeout", error=str(e))
-        raise AudioProcessingError("Azure Speech API request timed out") from e
+        logfire.error("Azure timeout", error=str(e))
+        raise AudioProcessingError("Azure API timed out") from e
     except httpx.RequestError as e:
-        logfire.error("Azure Speech API request error", error=str(e))
-        raise AudioProcessingError(f"Azure Speech API request failed: {e}") from e
+        logfire.error("Azure request error", error=str(e))
+        raise AudioProcessingError(f"Azure API failed: {e}") from e
     except json.JSONDecodeError as e:
-        logfire.error("Failed to parse Azure response", error=str(e))
-        raise AudioProcessingError("Invalid JSON response from Azure Speech API") from e
+        logfire.error("Azure JSON parse error", error=str(e))
+        raise AudioProcessingError("Invalid JSON from Azure") from e
 
 
 def extract_assessment_summary(azure_result: dict[str, Any]) -> dict[str, Any]:

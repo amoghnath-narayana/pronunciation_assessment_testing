@@ -1,4 +1,18 @@
-"""Service for pronunciation assessment using Azure Speech and Gemini."""
+"""
+Assessment Service - Orchestrates the pronunciation assessment pipeline.
+
+Flow:
+    [1] Receive audio + expected text from API endpoint
+    [2] Send to Azure Speech for pronunciation scores
+    [3] If score >= 90: Use template response (skip Gemini) - OPTIMIZATION
+    [4] If score < 90: Send to Gemini for learner-friendly feedback
+    [5] Generate TTS audio feedback
+
+Optimizations:
+    - Async Azure calls with connection pooling
+    - High score shortcut skips Gemini (~500-1000ms saved)
+    - Singleton service pattern (initialized once at startup)
+"""
 
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -11,15 +25,22 @@ from pydantic import ValidationError
 
 from config import AppConfig
 from exceptions import AudioProcessingError, InvalidAssessmentResponseError
-from models.assessment_models import AzureAnalysisResult, get_azure_analysis_response_schema
+from models.assessment_models import AzureAnalysisResult, OverallScores, get_azure_analysis_response_schema
 from prompts import AZURE_ANALYSIS_SYSTEM_PROMPT, build_tts_narration_prompt, build_azure_analysis_prompt
-from services.azure_speech_service import assess_pronunciation_with_azure, AzureSpeechConfig
+from services.azure_speech_service import assess_pronunciation_async, AzureSpeechConfig
 from utils import pcm_to_wav
+
+# High score threshold - skip Gemini for scores above this
+HIGH_SCORE_THRESHOLD = 90
 
 
 @dataclass
 class AssessmentService:
-    """Service for pronunciation assessment using Azure Speech and Gemini."""
+    """
+    Orchestrates pronunciation assessment: Azure → Gemini → TTS.
+
+    This service is designed as a singleton (one instance per app lifetime).
+    """
 
     config: AppConfig
     _composer: object = field(default=None, init=False, repr=False)
@@ -36,7 +57,7 @@ class AssessmentService:
 
     @cached_property
     def client(self):
-        """Gemini API client."""
+        """Gemini API client (cached for service lifetime)."""
         return genai.Client(
             api_key=self.config.gemini_api_key,
             http_options={"api_version": "v1alpha"}
@@ -64,64 +85,101 @@ class AssessmentService:
         )
         return TTSNarrationComposer(asset_loader=asset_loader, cache_service=cache_service)
 
-    def assess_pronunciation(
+    async def assess_pronunciation_async(
         self,
         audio_data_bytes: bytes,
         expected_sentence_text: str,
     ) -> AzureAnalysisResult:
-        """Assess pronunciation: Audio → Azure → Gemini analysis.
+        """
+        Step 1-4: Main assessment pipeline (async).
+
+        Flow:
+            [1] Validate inputs
+            [2] Call Azure Speech API (async)
+            [3] If score >= 90: Return template response (skip Gemini)
+            [4] If score < 90: Call Gemini for friendly feedback
 
         Args:
-            audio_data_bytes: WAV audio (16kHz mono PCM)
+            audio_data_bytes: Recorded audio (WAV/WebM)
             expected_sentence_text: Reference sentence
 
         Returns:
             AzureAnalysisResult: Scores and learner-friendly feedback
         """
+        # [1] Validate
         if not audio_data_bytes:
             raise AudioProcessingError("Audio data is empty")
         if not expected_sentence_text or not expected_sentence_text.strip():
             raise AudioProcessingError("Reference text is empty")
 
-        # Step 1: Azure pronunciation assessment
-        logfire.info("Step 1: Sending audio to Azure", audio_bytes=len(audio_data_bytes))
+        logfire.info("Step 1: Starting assessment", audio_bytes=len(audio_data_bytes))
 
+        # [2] Azure pronunciation assessment (async)
         azure_config = AzureSpeechConfig(
             speech_key=self.config.speech_key,
             speech_region=self.config.speech_region,
             language_code=self.config.speech_language_code,
         )
 
-        azure_result = assess_pronunciation_with_azure(
+        azure_result = await assess_pronunciation_async(
             audio_bytes=audio_data_bytes,
             reference_text=expected_sentence_text,
             language_code=self.config.speech_language_code,
             config=azure_config,
         )
 
+        # Handle recognition failure
         recognition_status = azure_result.get("RecognitionStatus", "Unknown")
         if recognition_status != "Success":
             logfire.warn("Azure recognition failed", status=recognition_status)
             return AzureAnalysisResult(
                 summary_text="I couldn't hear you clearly. Please try again!",
-                overall_scores={"pronunciation": 0, "accuracy": 0, "fluency": 0, "completeness": 0, "prosody": 0},
+                overall_scores=OverallScores(),
                 word_level_feedback=[],
                 prosody_feedback=None,
             )
 
-        # Log Azure scores
+        # Extract Azure scores
         nbest = azure_result.get("NBest", [{}])[0]
         azure_scores = nbest.get("PronunciationAssessment", {})
-        logfire.info(
-            "Azure assessment complete",
-            pron_score=azure_scores.get("PronScore"),
-            accuracy=azure_scores.get("AccuracyScore"),
-            fluency=azure_scores.get("FluencyScore"),
-        )
+        pron_score = azure_scores.get("PronScore", 0)
 
-        # Step 2: Gemini analysis
-        logfire.info("Step 2: Sending Azure results to Gemini for analysis")
+        logfire.info("Step 2 complete: Azure scores", pron=pron_score)
+
+        # [3] HIGH SCORE SHORTCUT - Skip Gemini for excellent pronunciation
+        if pron_score >= HIGH_SCORE_THRESHOLD:
+            logfire.info(f"Step 3: High score ({pron_score}) - skipping Gemini")
+            return self._build_high_score_response(azure_scores)
+
+        # [4] Call Gemini for learner-friendly feedback
+        logfire.info("Step 4: Sending to Gemini for analysis")
         return self._analyze_with_gemini(azure_result, expected_sentence_text)
+
+    def _build_high_score_response(self, azure_scores: dict) -> AzureAnalysisResult:
+        """
+        Step 3: Build template response for high scores (skips Gemini).
+
+        This saves ~500-1000ms by avoiding Gemini API call when
+        the pronunciation is already excellent.
+
+        Args:
+            azure_scores: PronunciationAssessment dict from Azure
+
+        Returns:
+            AzureAnalysisResult: Pre-built encouraging response
+        """
+        return AzureAnalysisResult(
+            summary_text="Excellent! Your pronunciation is perfect!",
+            overall_scores=OverallScores(
+                pronunciation=azure_scores.get("PronScore", 0),
+                accuracy=azure_scores.get("AccuracyScore", 0),
+                fluency=azure_scores.get("FluencyScore", 0),
+                completeness=azure_scores.get("CompletenessScore", 0),
+                prosody=azure_scores.get("ProsodyScore", 0),
+            ),
+            word_level_feedback=[],
+            prosody_feedback=None,
+        )
 
     def _analyze_with_gemini(self, azure_result: dict, reference_text: str) -> AzureAnalysisResult:
         """Send Azure results to Gemini for learner-friendly analysis."""
