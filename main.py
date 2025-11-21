@@ -7,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 import logfire
 
 from api.routers.assessment import router as assessment_router
-from api.routers.health import router as health_router
 from constants import APIConfig
 from exceptions import AssessmentError
 
@@ -73,7 +72,6 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include routers
-app.include_router(health_router, prefix="/api/v1")
 app.include_router(assessment_router)
 
 
