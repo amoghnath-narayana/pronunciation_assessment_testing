@@ -129,8 +129,17 @@ async def assess_pronunciation(
     except AssessmentError as e:
         # Handle all assessment errors (includes AudioProcessingError, InvalidAssessmentResponseError)
         status_code = 400 if e.error_type == "audio_processing" else 500
-        logfire.error(f"Assessment error ({e.error_type})", error=str(e))
-        raise HTTPException(status_code=status_code, detail=str(e)) from e
+        logfire.error(
+            f"Assessment error ({e.error_type})",
+            error=str(e),
+            error_message=e.message,
+            error_details=e.details,
+        )
+        raise HTTPException(
+            status_code=status_code, detail=f"{e.message}: {e.details}"
+        ) from e
     except Exception as e:
-        logfire.exception("Unexpected error")
-        raise HTTPException(status_code=500, detail="Internal server error") from e
+        logfire.exception("Unexpected error in assessment", error=str(e), exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(e)}"
+        ) from e

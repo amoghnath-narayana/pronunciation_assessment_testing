@@ -97,21 +97,26 @@ class TTSNarrationComposer:
                 logfire.error(f"Failed to load intro clip: {e}")
                 raise ValueError("Missing required asset: needs_work_intro") from e
 
-            # Add dynamic error corrections
-            for idx, error in enumerate(assessment_result.specific_errors):
+            # Add dynamic error corrections (SIMPLIFIED for speed)
+            # Only process first error for demo speed
+            for idx, error in enumerate(assessment_result.specific_errors[:1]):  # Limit to 1 error
                 try:
-                    # Build error text for TTS
-                    error_text = f"{error.issue} {error.suggestion}"
+                    # Build MINIMAL error text for TTS (max 7-8 words for speed)
+                    # Format: "Word '<word>': say '<expected>' not '<actual>'"
+                    error_text = f"Word {error.word}, say {error.expected_sound} not {error.actual_sound}"
 
+                    logfire.info(f"Generating TTS for: {error_text}")
+                    
                     # Get cached or generate TTS audio
                     error_audio_bytes = self.cache_service.get_or_generate(error_text)
-
-                    # Convert bytes to AudioSegment
-                    error_segment = AudioSegment.from_wav(io.BytesIO(error_audio_bytes))
-                    segments.append(error_segment)
-                    logfire.debug(
-                        f"Added dynamic error clip {idx + 1}/{len(assessment_result.specific_errors)}"
-                    )
+                    
+                    if error_audio_bytes:
+                        # Convert bytes to AudioSegment
+                        error_segment = AudioSegment.from_wav(io.BytesIO(error_audio_bytes))
+                        segments.append(error_segment)
+                        logfire.debug(f"Added dynamic error clip for '{error.word}'")
+                    else:
+                        logfire.warning(f"No TTS audio generated for '{error.word}'")
 
                 except Exception as e:
                     logfire.error(

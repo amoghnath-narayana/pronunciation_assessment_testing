@@ -6,21 +6,30 @@ from pydantic import BaseModel, Field
 
 
 class OverallScores(BaseModel):
-    """Overall pronunciation scores from Azure."""
+    """Overall pronunciation scores from Azure (prosody removed for young learners)."""
 
     pronunciation: float = 0.0
     accuracy: float = 0.0
     fluency: float = 0.0
     completeness: float = 0.0
-    prosody: float = 0.0
 
 
 class WordFeedback(BaseModel):
-    """Word-level feedback."""
+    """Word-level feedback with specific phoneme information."""
 
     word: str
-    issue: str
-    suggestion: str
+    letter: str = Field(
+        description="The exact letter(s) in the word that need work (e.g., 'th', 'r', 'e')"
+    )
+    expected_sound: str = Field(
+        description="The sound they should make (e.g., 'th', 'eh', 'ar')"
+    )
+    actual_sound: str = Field(
+        description="The sound they actually made (e.g., 't', 'uh', 'aa')"
+    )
+    suggestion: str = Field(
+        description="Child-friendly tip on how to make the correct sound"
+    )
     severity: Literal["critical", "minor"] = "minor"
 
 
@@ -30,7 +39,6 @@ class AzureAnalysisResult(BaseModel):
     summary_text: str = Field(description="Encouraging summary for the learner")
     overall_scores: OverallScores = Field(default_factory=OverallScores)
     word_level_feedback: list[WordFeedback] = Field(default_factory=list)
-    prosody_feedback: str | None = None
 
     @property
     def specific_errors(self) -> list[WordFeedback]:
@@ -51,14 +59,12 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                     "accuracy": {"type": "number"},
                     "fluency": {"type": "number"},
                     "completeness": {"type": "number"},
-                    "prosody": {"type": "number"},
                 },
                 "required": [
                     "pronunciation",
                     "accuracy",
                     "fluency",
                     "completeness",
-                    "prosody",
                 ],
             },
             "word_level_feedback": {
@@ -67,14 +73,22 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                     "type": "object",
                     "properties": {
                         "word": {"type": "string"},
-                        "issue": {"type": "string"},
+                        "letter": {"type": "string"},
+                        "expected_sound": {"type": "string"},
+                        "actual_sound": {"type": "string"},
                         "suggestion": {"type": "string"},
                         "severity": {"type": "string", "enum": ["critical", "minor"]},
                     },
-                    "required": ["word", "issue", "suggestion", "severity"],
+                    "required": [
+                        "word",
+                        "letter",
+                        "expected_sound",
+                        "actual_sound",
+                        "suggestion",
+                        "severity",
+                    ],
                 },
             },
-            "prosody_feedback": {"type": "string", "nullable": True},
         },
         "required": ["summary_text", "overall_scores", "word_level_feedback"],
     }

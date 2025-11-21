@@ -183,20 +183,19 @@ class AssessmentService:
         accuracy = azure_scores.get("AccuracyScore", 0)
         fluency = azure_scores.get("FluencyScore", 0)
         completeness = azure_scores.get("CompletenessScore", 0)
-        prosody = azure_scores.get("ProsodyScore", 0)
         word_count = len(nbest.get("Words", []))
 
         logfire.info(
             (
                 f"Step 2 complete: Azure scores | pron={pron_score:.2f} "
-                f"acc={accuracy:.2f} flu={fluency:.2f} comp={completeness:.2f} pros={prosody:.2f} "
+                f"acc={accuracy:.2f} flu={fluency:.2f} comp={completeness:.2f} "
                 f"words={word_count}"
             )
         )
 
         # If Azure returned zeros (no evidence of scoring), don't send junk to Gemini
         non_zero_scores = [
-            s for s in [pron_score, accuracy, fluency, completeness, prosody] if s
+            s for s in [pron_score, accuracy, fluency, completeness] if s
         ]
         if not non_zero_scores:
             logfire.warn(
@@ -255,6 +254,14 @@ class AssessmentService:
                     response_schema=AzureAnalysisResult,
                     thinking_config=types.ThinkingConfig(thinking_level="low"),
                 ),
+            )
+
+            # Log raw response for debugging
+            parsed_raw = getattr(response, "parsed", None)
+            logfire.debug(
+                "Gemini raw response received",
+                has_parsed=parsed_raw is not None,
+                parsed_preview=str(parsed_raw)[:500] if parsed_raw else None,
             )
 
             result = self._parse_gemini_response(response)
@@ -370,8 +377,10 @@ class AssessmentService:
             return AzureAnalysisResult.model_validate(parsed)
         except ValidationError as e:
             logfire.error(
-                "Invalid Gemini structured output",
+                "Invalid Gemini structured output - validation failed",
                 error=str(e),
+                validation_errors=e.errors(),
+                parsed_data=parsed,
                 model=self.config.model_name,
                 text_preview=text_preview,
                 candidate_count=len(candidates),
@@ -381,8 +390,9 @@ class AssessmentService:
                 prompt_tokens=prompt_tokens,
                 candidate_tokens=candidate_tokens,
             )
+            logfire.debug("Full parsed data from Gemini", parsed_data_full=parsed)
             raise InvalidAssessmentResponseError(
-                f"Invalid Gemini structured output: {e}"
+                f"Invalid Gemini structured output: {e.errors()}"
             ) from e
 
     async def generate_tts_narration_async(

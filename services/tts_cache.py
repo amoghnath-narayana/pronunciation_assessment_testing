@@ -142,20 +142,28 @@ class TTSCacheService:
             )
 
             # Extract PCM audio data and convert to WAV
-            if response.candidates and response.candidates[0].content.parts:
-                for part in response.candidates[0].content.parts:
-                    if part.inline_data:
-                        wav_bytes = convert_audio(
-                            part.inline_data.data,
-                            output_format="wav",
-                            sample_rate=24000,
-                            channels=1,
-                            is_raw_pcm=True,
-                        )
-                        logfire.info(f"Generated TTS audio: {len(wav_bytes)} bytes")
-                        return wav_bytes
+            if not response or not response.candidates:
+                logfire.error(f"TTS response has no candidates for text: {text[:50]}")
+                raise Exception(f"No candidates in TTS response for: {text[:50]}")
+            
+            candidate = response.candidates[0]
+            if not candidate.content or not candidate.content.parts:
+                logfire.error(f"TTS candidate has no content/parts for text: {text[:50]}")
+                raise Exception(f"No content/parts in TTS response for: {text[:50]}")
+            
+            for part in candidate.content.parts:
+                if part.inline_data:
+                    wav_bytes = convert_audio(
+                        part.inline_data.data,
+                        output_format="wav",
+                        sample_rate=24000,
+                        channels=1,
+                        is_raw_pcm=True,
+                    )
+                    logfire.info(f"Generated TTS audio: {len(wav_bytes)} bytes for text: {text[:50]}")
+                    return wav_bytes
 
-            raise Exception("No audio data in TTS response")
+            raise Exception(f"No audio data in TTS response for: {text[:50]}")
 
         except Exception as e:
             logfire.error(f"Error generating TTS: {e}")

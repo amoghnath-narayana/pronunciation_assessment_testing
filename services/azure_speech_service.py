@@ -99,20 +99,20 @@ async def assess_pronunciation_async(
         speech_config = speechsdk.SpeechConfig(
             subscription=config.speech_key, region=config.speech_region
         )
+        # Set speech recognition language
+        speech_config.speech_recognition_language = config.speech_language_code
         speech_config.request_word_level_timestamps()
 
         # [2.3] Build pronunciation assessment config
-        enable_prosody = config.speech_language_code
+        # Prosody disabled - focusing only on phoneme-level accuracy for young learners
         pronunciation_config = speechsdk.PronunciationAssessmentConfig(
             reference_text=reference_text.strip(),
             grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
             granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
         )
-
-        # Enable prosody for en-US only
-        if enable_prosody:
-            pronunciation_config.enable_prosody_assessment()
-
+        # Enable miscue detection to catch word substitutions (e.g., "bat" vs "mat")
+        pronunciation_config.enable_miscue = True
+        
         # Create push stream for audio
         push_stream = speechsdk.audio.PushAudioInputStream()
         audio_config = speechsdk.audio.AudioConfig(stream=push_stream)

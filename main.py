@@ -10,6 +10,9 @@ from api.routers.assessment import router as assessment_router
 from constants import APIConfig
 from exceptions import AssessmentError
 
+# Configure logfire for local console logging only (no cloud service)
+logfire.configure(send_to_logfire=False)
+
 __all__ = [
     "app",
     "assessment_error_handler",

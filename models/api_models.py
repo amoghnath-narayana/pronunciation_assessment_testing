@@ -45,9 +45,6 @@ class AssessmentWithTTSResponse(BaseModel):
     word_level_feedback: list = Field(
         default_factory=list, description="Word-level issues and suggestions"
     )
-    prosody_feedback: str | None = Field(
-        default=None, description="Rhythm/intonation feedback"
-    )
     tts_audio_base64: str | None = Field(
         default=None, description="Base64-encoded WAV audio feedback"
     )
@@ -61,6 +58,5 @@ class AssessmentWithTTSResponse(BaseModel):
             summary_text=result.summary_text,
             overall_scores=result.overall_scores,
             word_level_feedback=[wf.model_dump() for wf in result.word_level_feedback],
-            prosody_feedback=result.prosody_feedback,
             tts_audio_base64=tts_audio_base64,
         )
