@@ -117,41 +117,71 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
 class AzureOverallScores(BaseModel):
     """Overall pronunciation scores from NBest[0].PronunciationAssessment."""
 
-    AccuracyScore: float = Field(
-        default=0.0, description="Pronunciation accuracy (0-100)"
-    )
-    FluencyScore: float = Field(default=0.0, description="Speech fluency (0-100)")
-    CompletenessScore: float = Field(
-        default=0.0, description="Completeness of speech (0-100)"
-    )
-    PronScore: float = Field(
-        default=0.0, description="Overall pronunciation score (0-100)"
-    )
+    AccuracyScore: float = 0.0
+    FluencyScore: float = 0.0
+    CompletenessScore: float = 0.0
+    PronScore: float = 0.0
+    ProsodyScore: float = 0.0
 
 
 class AzureWordScores(BaseModel):
     """Word-level pronunciation scores from Words[].PronunciationAssessment."""
 
-    AccuracyScore: float = Field(default=0.0, description="Word accuracy score (0-100)")
-    ErrorType: str = Field(
-        default="None",
-        description="Error type: None, Omission, Insertion, Mispronunciation",
-    )
+    AccuracyScore: float = 0.0
+    ErrorType: str = "None"
+
+
+class AzurePhoneme(BaseModel):
+    """Phoneme-level assessment data."""
+
+    Phoneme: str
+    PronunciationAssessment: dict[str, Any] = Field(default_factory=dict)
+    NBestPhonemes: Optional[list[dict[str, Any]]] = None
+
+    class Config:
+        extra = "allow"
+
+
+class AzureSyllable(BaseModel):
+    """Syllable-level assessment data."""
+
+    Syllable: str
+    PronunciationAssessment: dict[str, Any] = Field(default_factory=dict)
+    Grapheme: Optional[str] = None
+
+    class Config:
+        extra = "allow"
 
 
 class AzureWordAssessment(BaseModel):
     """Word-level assessment from Azure Speech Service."""
 
-    Word: str = Field(description="The recognized word")
-    Offset: int = Field(description="Offset in ticks")
-    Duration: int = Field(description="Duration in ticks")
-    Confidence: float = Field(default=0.0, description="Confidence score")
-    PronunciationAssessment: AzureWordScores = Field(
-        default_factory=AzureWordScores, description="Word-level pronunciation scores"
-    )
+    Word: str
+    Offset: int = 0
+    Duration: int = 0
+    Confidence: float = 0.0
+    PronunciationAssessment: AzureWordScores = Field(default_factory=AzureWordScores)
+    Phonemes: list[AzurePhoneme] = Field(default_factory=list)
+    Syllables: list[AzureSyllable] = Field(default_factory=list)
 
     class Config:
-        # Allow extra fields like Phonemes, Syllables, Grapheme that we don't explicitly model
+        extra = "allow"
+
+
+class AzureNBestResult(BaseModel):
+    """Single NBest result with scores and words."""
+
+    Confidence: float = 0.9
+    Lexical: str = ""
+    ITN: str = ""
+    MaskedITN: str = ""
+    Display: str = ""
+    PronunciationAssessment: AzureOverallScores = Field(
+        default_factory=AzureOverallScores
+    )
+    Words: list[AzureWordAssessment] = Field(default_factory=list)
+
+    class Config:
         extra = "allow"
 
 
@@ -160,12 +190,9 @@ class AzureRecognitionResult(BaseModel):
 
     RecognitionStatus: Literal[
         "Success", "NoMatch", "InitialSilenceTimeout", "BabbleTimeout", "Error"
-    ] = Field(description="Recognition status")
-    DisplayText: str = Field(default="", description="Recognized text")
-    NBest: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="N-best recognition results with scores and words",
-    )
+    ] = "Success"
+    DisplayText: str = ""
+    NBest: list[AzureNBestResult] = Field(default_factory=list)
 
     @property
     def is_successful(self) -> bool:
@@ -175,19 +202,12 @@ class AzureRecognitionResult(BaseModel):
     @property
     def pronunciation_scores(self) -> Optional[AzureOverallScores]:
         """Get overall pronunciation scores from NBest[0].PronunciationAssessment."""
-        if not self.is_successful:
-            return None
-        scores_dict = self.NBest[0].get("PronunciationAssessment", {})
-        return AzureOverallScores(**scores_dict) if scores_dict else None
+        return self.NBest[0].PronunciationAssessment if self.is_successful else None
 
     @property
     def words(self) -> list[AzureWordAssessment]:
         """Get word-level assessments from best result."""
-        if not self.is_successful:
-            return []
-        words_list = self.NBest[0].get("Words", [])
-        return [AzureWordAssessment(**word) for word in words_list]
+        return self.NBest[0].Words if self.is_successful else []
 
     class Config:
-        # Allow extra fields from Azure response
         extra = "allow"
