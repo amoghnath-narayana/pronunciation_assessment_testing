@@ -209,5 +209,23 @@ class AzureRecognitionResult(BaseModel):
         """Get word-level assessments from best result."""
         return self.NBest[0].Words if self.is_successful else []
 
+    @property
+    def has_valid_scores(self) -> bool:
+        """Check if scores are present and non-zero."""
+        if not (scores := self.pronunciation_scores):
+            return False
+        return any(
+            s not in (0, None)
+            for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]
+        )
+
+    def get_fallback_result(self, message: str = "I couldn't hear you clearly. Please try again!") -> "AzureAnalysisResult":
+        """Create fallback result for failed recognition."""
+        return AzureAnalysisResult(
+            summary_text=message,
+            overall_scores=OverallScores(),
+            word_level_feedback=[],
+        )
+
     class Config:
         extra = "allow"
