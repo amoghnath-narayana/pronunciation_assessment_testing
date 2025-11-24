@@ -103,15 +103,21 @@ async def assess_pronunciation_async(
         speech_config.speech_recognition_language = config.speech_language_code
         speech_config.request_word_level_timestamps()
 
-        # [2.3] Build pronunciation assessment config
-        # Prosody disabled - focusing only on phoneme-level accuracy for young learners
+        # [2.3] Build pronunciation assessment config with NBestPhonemes support
+        # Using JSON config to enable nBestPhonemeCount (not available via standard constructor)
+        # This provides "what they actually said" vs "what was expected" for each phoneme
+        pronunciation_config_json = {
+            "referenceText": reference_text.strip(),
+            "gradingSystem": "HundredMark",
+            "granularity": "Phoneme",
+            "phonemeAlphabet": "IPA",
+            "nBestPhonemeCount": 5,  # Get top 5 alternative phonemes for each expected phoneme
+        }
         pronunciation_config = speechsdk.PronunciationAssessmentConfig(
-            reference_text=reference_text.strip(),
-            grading_system=speechsdk.PronunciationAssessmentGradingSystem.HundredMark,
-            granularity=speechsdk.PronunciationAssessmentGranularity.Phoneme,
+            json_string=json.dumps(pronunciation_config_json)
         )
-        # Enable miscue detection to catch word substitutions (e.g., "bat" vs "mat")
         pronunciation_config.enable_miscue = True
+        pronunciation_config.enable_prosody_assessment = True
         
         # Create push stream for audio
         push_stream = speechsdk.audio.PushAudioInputStream()
@@ -138,7 +144,19 @@ async def assess_pronunciation_async(
 
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
                 # Parse JSON result
-                return json.loads(result.json)
+                json_result = json.loads(result.json)
+                
+                # Try to get pronunciation assessment result object for NBestPhonemes
+                # This is separate from the JSON and may contain additional data
+                try:
+                    pron_result = speechsdk.PronunciationAssessmentResult(result)
+                    logfire.debug("PronunciationAssessmentResult object created", 
+                                 accuracy=pron_result.accuracy_score,
+                                 pronunciation=pron_result.pronunciation_score)
+                except Exception as e:
+                    logfire.debug("Could not create PronunciationAssessmentResult", error=str(e))
+                
+                return json_result
             elif result.reason == speechsdk.ResultReason.NoMatch:
                 logfire.warning("Azure: No speech recognized")
                 return {"RecognitionStatus": "NoMatch", "DisplayText": "", "NBest": []}

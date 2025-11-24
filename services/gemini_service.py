@@ -5,30 +5,22 @@ This service coordinates the complete pronunciation assessment workflow:
     [1] Receives audio bytes and expected text from API endpoint
     [2] Calls Azure Speech SDK for pronunciation scoring (async)
     [3] Sends Azure results to Gemini for learner-friendly analysis and word-level feedback
-    [4] Optionally generates TTS audio narration from assessment results
 
 Architecture:
     - Singleton pattern: One instance per app lifetime, initialized at startup
-    - Async throughout: Azure SDK calls and TTS generation run non-blocking
-    - Lazy TTS initialization: TTS composer only loads if optimization is enabled
+    - Async throughout: Azure SDK calls run non-blocking
 
 Key Methods:
     - assess_pronunciation_async(): Main pipeline (steps 1-3)
-    - generate_tts_narration_async(): Optional TTS generation (step 4)
     - _analyze_with_gemini(): Sends Azure results to Gemini for structured analysis
     - _parse_gemini_response(): Validates and parses Gemini's structured output
 
 Performance Optimizations:
     - Async Azure Speech SDK calls (non-blocking I/O)
-    - Async TTS generation allows parallel execution with other operations
-    - High-score TTS caching (perfect pronunciation responses cached in memory)
-    - TTS composer uses disk cache for dynamic narration segments
 """
 
-import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import cached_property
-from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -46,72 +38,23 @@ from prompts import (
     build_azure_analysis_prompt,
 )
 from services.azure_speech_service import assess_pronunciation_async
-from utils import convert_audio
 
 
 @dataclass
 class AssessmentService:
     """
-    Orchestrates pronunciation assessment: Azure → Gemini → TTS.
+    Orchestrates pronunciation assessment: Azure → Gemini.
 
     This service is designed as a singleton (one instance per app lifetime).
     """
 
     config: AppConfig
-    _composer: object = field(default=None, init=False, repr=False)
-
-    def __post_init__(self):
-        """Initialize TTS composer for optimized audio generation."""
-        if self.config.tts_enable_optimization:
-            try:
-                self._composer = self._initialize_composer()
-                logfire.info("TTS composer initialized")
-            except Exception as e:
-                logfire.warn("TTS composer unavailable, using fallback", error=str(e))
-                self._composer = None
 
     @cached_property
     def client(self):
         """Gemini API client (cached for service lifetime)."""
         return genai.Client(
             api_key=self.config.gemini_api_key, http_options={"api_version": "v1alpha"}
-        )
-
-    def _initialize_composer(self):
-        """
-        Initialize TTS composer with all required dependencies.
-
-        Creates and wires together:
-            - TTSAssetLoader: Loads pre-recorded audio clips from manifest
-            - TTSCacheService: Manages disk cache for dynamic TTS segments
-            - TTSNarrationComposer: Composes final audio from static + dynamic segments
-
-        Returns:
-            TTSNarrationComposer: Initialized composer ready for audio generation
-
-        Raises:
-            Exception: If initialization fails (caught in __post_init__)
-        """
-        from services.tts_assets import TTSAssetLoader
-        from services.tts_cache import TTSCacheService
-        from services.tts_composer import TTSNarrationComposer
-
-        asset_loader = TTSAssetLoader(
-            manifest_path=Path(self.config.tts_manifest_path),
-            assets_dir=Path(self.config.tts_assets_dir),
-        )
-        cache_service = TTSCacheService(
-            cache_dir=Path(self.config.tts_cache_dir),
-            cache_size_mb=self.config.tts_cache_size_mb,
-            gemini_client=self.client,
-            tts_config={
-                "model_name": self.config.tts_model_name,
-                "voice_name": self.config.tts_voice_name,
-                "voice_style_prompt": self.config.tts_voice_style_prompt,
-            },
-        )
-        return TTSNarrationComposer(
-            asset_loader=asset_loader, cache_service=cache_service
         )
 
     async def assess_pronunciation_async(
@@ -395,51 +338,4 @@ class AssessmentService:
                 f"Invalid Gemini structured output: {e.errors()}"
             ) from e
 
-    async def generate_tts_narration_async(
-        self, assessment_result: AzureAnalysisResult
-    ) -> bytes:
-        """
-        Generate TTS audio narration from assessment result (async, non-blocking).
 
-        This method creates audio feedback by composing pre-recorded clips with
-        dynamically generated TTS for specific error corrections.
-
-        Caching Strategy:
-            - Static clips (perfect_intro, needs_work_intro, closing_cheer): 
-              Cached in memory by TTSAssetLoader at startup
-            - Dynamic error segments (individual word corrections):
-              Cached on disk by TTSCacheService using (text, voice) as key
-            - Perfect pronunciation narration:
-              Just returns the "perfect_intro" static clip (no additional caching needed)
-
-        Flow:
-            [1] Call TTS composer (runs in thread pool via asyncio.to_thread)
-            [2] TTS composer builds audio:
-                - Perfect reading: Single "perfect_intro" clip (from asset cache)
-                - Has errors: "needs_work_intro" + dynamic error TTS (from disk cache) + "closing_cheer"
-
-        Args:
-            assessment_result: Assessment result containing summary_text and word_level_feedback
-
-        Returns:
-            bytes: WAV audio data, or None if TTS composer unavailable or generation fails
-
-        Note:
-            - Uses asyncio.to_thread for non-blocking execution
-            - All caching is handled by TTSAssetLoader (static) and TTSCacheService (dynamic)
-            - No need for additional in-memory caching of full narrations
-        """
-        # Use asyncio.to_thread for non-blocking execution
-        if self._composer:
-            try:
-                result = await asyncio.to_thread(
-                    self._composer.compose, assessment_result
-                )
-            except Exception as e:
-                logfire.error("TTS composer failed", error=str(e))
-                return None
-        else:
-            logfire.warn("TTS composer not available")
-            return None
-
-        return result

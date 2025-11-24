@@ -17,25 +17,14 @@ class AppConfig(BaseSettings):
         validation_alias=AliasChoices("SPEECH_REGION", "AZURE_SPEECH_REGION")
     )
     # Use a PA-supported locale by default; override via env if needed
-    # Note: en-IN is available for Indian English, but en-US with lenient Gemini analysis
-    # provides better results for young learners with Indian English accents
+    # Note: en-US is used because it provides phoneme-level details (NBestPhonemes, syllables)
+    # which are required for word-level feedback. en-IN doesn't support these features.
+    # The Gemini analysis is configured to be lenient with Indian English accents.
     speech_language_code: str = "en-US"
 
-    # Gemini API Settings (for analysis and TTS only)
+    # Gemini API Settings (for analysis only)   
     gemini_api_key: str
     model_name: str
     assessment_temperature: float = 0.3
     # Higher default because thinking models can consume tokens before producing output
     assessment_max_output_tokens: int = 10000
-
-    # TTS Settings
-    tts_model_name: str
-    tts_voice_name: str
-    tts_voice_style_prompt: str = "Speak warmly to a child."
-
-    # TTS Optimization
-    tts_assets_dir: str = "assets/tts"
-    tts_manifest_path: str = "assets/tts/manifest.json"
-    tts_cache_dir: str = "assets/tts/cache"
-    tts_cache_size_mb: int = 500
-    tts_enable_optimization: bool = True

@@ -5,12 +5,10 @@
  *   [1] User clicks record button → startRecording()
  *   [2] MediaRecorder captures audio chunks (WebM format)
  *   [3] User clicks stop → stopRecording() → processRecording()
- *   [4] Single POST to /api/v1/assess with audio + expected_text + include_tts=true
- *   [5] Backend returns: { scores, feedback, tts_audio_base64 }
- *   [6] displayResults() shows scores and plays TTS audio
+ *   [4] POST to /api/v1/assess with audio + expected_text
+ *   [5] Backend returns: { scores, feedback }
+ *   [6] displayResults() shows scores and feedback
  *   [7] Auto-reset to IDLE after 5 seconds
- *
- * Optimization: Single API call instead of parallel requests saves ~1.5-2.5s
  */
 
 const AppState = {
@@ -171,14 +169,9 @@ document.addEventListener('alpine:init', () => {
          * Flow:
          *   [3.1] Validate expected text and audio chunks exist
          *   [3.2] Create audio blob from recorded chunks
-         *   [3.3] Send single POST request to /api/v1/assess (with include_tts=true)
-         *   [3.4] Parse response containing scores + base64 TTS audio
-         *   [3.5] Display results and play TTS feedback
-         *
-         * Optimization: Single request instead of parallel requests
-         *   - Previously: 2 requests = 2x Azure + 2x Gemini + 1x TTS
-         *   - Now: 1 request = 1x Azure + 1x Gemini + 1x TTS
-         *   - Savings: ~1.5-2.5 seconds
+         *   [3.3] Send POST request to /api/v1/assess
+         *   [3.4] Parse response containing scores and feedback
+         *   [3.5] Display results
          */
         async processRecording() {
             // [3.1] Validate inputs
@@ -200,11 +193,10 @@ document.addEventListener('alpine:init', () => {
                 // [3.2] Create audio blob
                 const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
 
-                // [3.3] Single optimized request (replaces previous parallel requests)
+                // [3.3] Send assessment request
                 const formData = new FormData();
                 formData.append("audio_file", audioBlob, "recording.webm");
                 formData.append("expected_text", expectedSentence);
-                formData.append("include_tts", "true");
 
                 const response = await fetch("/api/v1/assess", {
                     method: "POST",
@@ -215,22 +207,10 @@ document.addEventListener('alpine:init', () => {
                     throw new Error(`API error ${response.status}`);
                 }
 
-                // [3.4] Parse combined response (scores + base64 TTS)
+                // [3.4] Parse response (scores + feedback)
                 const data = await response.json();
 
-                // [3.5] Convert base64 TTS audio to playable URL
-                let audioUrl = null;
-                if (data.tts_audio_base64) {
-                    const binaryString = atob(data.tts_audio_base64);
-                    const bytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    const audioBlob = new Blob([bytes], { type: "audio/wav" });
-                    audioUrl = URL.createObjectURL(audioBlob);
-                }
-
-                this.displayResults(data, audioUrl);
+                this.displayResults(data);
             } catch (error) {
                 console.error("Error:", error);
                 alert(`Failed: ${error.message}`);
@@ -242,19 +222,17 @@ document.addEventListener('alpine:init', () => {
         },
 
         /**
-         * Step 4: Display assessment results and play TTS feedback.
+         * Step 4: Display assessment results.
          *
          * Flow:
          *   [4.1] Extract scores and feedback from API response
          *   [4.2] Select mascot animation based on pronunciation score
          *   [4.3] Update UI with results
-         *   [4.4] Play TTS audio feedback if available
-         *   [4.5] Auto-reset to IDLE after 5 seconds
+         *   [4.4] Auto-reset to IDLE after 5 seconds
          *
          * @param {Object} data - API response with scores and feedback
-         * @param {string|null} audioUrl - Blob URL for TTS audio
          */
-        displayResults(data, audioUrl = null) {
+        displayResults(data) {
             // [4.1] Extract data from response
             const errors = data.word_level_feedback || [];
             const scores = data.overall_scores || {};
@@ -304,14 +282,7 @@ document.addEventListener('alpine:init', () => {
                 : `Score: ${Math.round(pronScore)}% - ${errors.length} area(s) to improve`;
             this.transitionTo(AppState.RESULTS, statusMsg, statusIcon);
 
-            // [4.4] Play TTS audio
-            if (audioUrl) {
-                const audio = new Audio(audioUrl);
-                audio.play().catch(e => console.error(e));
-                audio.onended = () => URL.revokeObjectURL(audioUrl);
-            }
-
-            // [4.5] Auto-reset after 5 seconds
+            // [4.4] Auto-reset after 5 seconds
             setTimeout(() => {
                 if (this.state === AppState.RESULTS) {
                     this.currentAnimation = "idle";

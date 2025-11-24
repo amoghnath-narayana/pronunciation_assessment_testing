@@ -40,11 +40,6 @@ class AzureAnalysisResult(BaseModel):
     overall_scores: OverallScores = Field(default_factory=OverallScores)
     word_level_feedback: list[WordFeedback] = Field(default_factory=list)
 
-    @property
-    def specific_errors(self) -> list[WordFeedback]:
-        """Alias for TTS compatibility."""
-        return self.word_level_feedback
-
 
 def get_azure_analysis_response_schema() -> dict[str, Any]:
     """JSON schema for Gemini structured output."""

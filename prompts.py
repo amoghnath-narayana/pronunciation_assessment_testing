@@ -164,20 +164,25 @@ Scores: Pron={scores.get("PronScore", 0)} Acc={scores.get("AccuracyScore", 0)} F
    - If found: ALWAYS flag as critical
    - word: word they said, letter: whole word, expected_sound: expected_word, actual_sound: word, suggestion: "The word is '<expected_word>', not '<word>'", severity: "critical"
 
-2. Check phoneme AccuracyScore <50 (be lenient)
+2. Check phoneme AccuracyScore <50 (be lenient for Indian accent)
    - For each word, check phonemes array
    - If phoneme has actual_sounds array, use actual_sounds[0].phoneme (this is what they ACTUALLY said)
-   - Convert IPA to simple: b→"b", m→"m", θ→"th", d→"d", ə→"uh", k→"k", g→"g"
+   - Convert IPA to simple: ð→"th", θ→"th", b→"b", d→"d", m→"m", n→"n", k→"k", g→"g", t→"t", p→"p", æ→"a", ə→"uh", ɪ→"i", z→"z", s→"s", ɔ→"o", oʊ→"oh", ŋ→"ng", l→"l", ɹ→"r", ɑ→"ah", ɛ→"e", ʌ→"uh", h→"h"
    - actual_sound MUST be from actual_sounds[0].phoneme, NOT "unclear"
-   - word: word, letter: letter(s), expected_sound: correct sound, actual_sound: actual_sounds[0].phoneme converted to simple letter, suggestion: "Instead of '<actual>', try '<expected>' by <tip>", severity: "critical" if <40 else "minor"
+   - word: word, letter: letter(s) that make this sound, expected_sound: correct sound in simple form, actual_sound: actual_sounds[0].phoneme converted to simple form, suggestion: "Instead of '<actual>', try '<expected>' by <tip>", severity: "critical" if <40 else "minor"
 
 3. Max 1 item only (for speed). Prioritize wrong words > severe pronunciation issues.
 </instructions>
 
-Example: If phoneme "m" has accuracy_score=45 and actual_sounds=[{{"phoneme":"b","score":100}}], then:
-- expected_sound: "m"
-- actual_sound: "b" (from actual_sounds[0].phoneme)
-- suggestion: "Instead of 'b', try 'm' by pressing your lips together"
+Examples:
+- If phoneme "m" has accuracy_score=45 and actual_sounds=[{{"phoneme":"b","score":100}}]:
+  expected_sound: "m", actual_sound: "b", suggestion: "Instead of 'b', try 'm' by pressing your lips together"
+
+- If phoneme "ð" (th) has accuracy_score=70 and actual_sounds=[{{"phoneme":"b","score":91}}]:
+  expected_sound: "th", actual_sound: "b", suggestion: "Instead of 'b', try 'th' by putting your tongue between your teeth"
+
+- If phoneme "æ" has accuracy_score=100 and actual_sounds=[{{"phoneme":"æ","score":100}}]:
+  No feedback needed (perfect score)
 
 Return JSON:
 {{"summary_text":"<encouragement>","overall_scores":{{"pronunciation":<n>,"accuracy":<n>,"fluency":<n>,"completeness":<n>}},"word_level_feedback":[{{"word":"<word>","letter":"<letter>","expected_sound":"<expected>","actual_sound":"<actual>","suggestion":"<tip>","severity":"critical|minor"}}]}}"""
