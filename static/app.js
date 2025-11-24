@@ -30,7 +30,10 @@ document.addEventListener('alpine:init', () => {
         resultMessage: "",
         errors: [],
         scores: null,
-        mediaRecorder: null,
+        audioContext: null,
+        audioInput: null,
+        audioRecorder: null,
+        recordingStream: null,
         audioChunks: [],
 
         // UI State
@@ -114,9 +117,9 @@ document.addEventListener('alpine:init', () => {
          * Flow:
          *   [1.1] Reset previous results and audio chunks
          *   [1.2] Request microphone access via getUserMedia
-         *   [1.3] Create MediaRecorder to capture audio
-         *   [1.4] Collect audio chunks as data becomes available
-         *   [1.5] On stop, release microphone and trigger processRecording()
+         *   [1.3] Create AudioContext and ScriptProcessor for WAV recording
+         *   [1.4] Collect audio samples
+         *   [1.5] On stop, convert to WAV and trigger processRecording()
          */
         async startRecording() {
             // [1.1] Reset state
@@ -128,23 +131,34 @@ document.addEventListener('alpine:init', () => {
 
             try {
                 // [1.2] Request microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
 
-                // [1.3] Create recorder
-                this.mediaRecorder = new MediaRecorder(stream);
+                // [1.3] Create AudioContext for WAV recording
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                this.audioInput = this.audioContext.createMediaStreamSource(stream);
+                this.audioRecorder = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-                // [1.4] Collect chunks
-                this.mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) this.audioChunks.push(event.data);
+                this.recordingStream = stream;
+                this.audioChunks = [];
+
+                // [1.4] Collect audio samples
+                this.audioRecorder.onaudioprocess = (e) => {
+                    if (this.state === AppState.RECORDING) {
+                        const channelData = e.inputBuffer.getChannelData(0);
+                        this.audioChunks.push(new Float32Array(channelData));
+                    }
                 };
 
-                // [1.5] On stop → process
-                this.mediaRecorder.onstop = async () => {
-                    stream.getTracks().forEach((track) => track.stop());
-                    await this.processRecording();
-                };
+                this.audioInput.connect(this.audioRecorder);
+                this.audioRecorder.connect(this.audioContext.destination);
 
-                this.mediaRecorder.start();
             } catch (error) {
                 console.error("Error accessing microphone:", error);
                 alert("Could not access microphone. Please check permissions.");
@@ -156,10 +170,25 @@ document.addEventListener('alpine:init', () => {
          * Step 2: Stop recording and trigger processing.
          */
         async stopRecording() {
-            if (this.mediaRecorder && this.state === AppState.RECORDING) {
+            if (this.audioRecorder && this.state === AppState.RECORDING) {
                 this.transitionTo(AppState.PROCESSING);
                 this.currentAnimation = "idle";
-                this.mediaRecorder.stop();
+
+                // Disconnect audio nodes
+                this.audioRecorder.disconnect();
+                this.audioInput.disconnect();
+
+                // Stop microphone stream
+                if (this.recordingStream) {
+                    this.recordingStream.getTracks().forEach((track) => track.stop());
+                }
+
+                // Close audio context
+                if (this.audioContext) {
+                    await this.audioContext.close();
+                }
+
+                await this.processRecording();
             }
         },
 
@@ -168,7 +197,7 @@ document.addEventListener('alpine:init', () => {
          *
          * Flow:
          *   [3.1] Validate expected text and audio chunks exist
-         *   [3.2] Create audio blob from recorded chunks
+         *   [3.2] Convert Float32Array chunks to WAV blob
          *   [3.3] Send POST request to /api/v1/assess
          *   [3.4] Parse response containing scores and feedback
          *   [3.5] Display results
@@ -190,12 +219,12 @@ document.addEventListener('alpine:init', () => {
             }
 
             try {
-                // [3.2] Create audio blob
-                const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
+                // [3.2] Convert to WAV blob
+                const audioBlob = this.exportWAV(this.audioChunks, 16000);
 
                 // [3.3] Send assessment request
                 const formData = new FormData();
-                formData.append("audio_file", audioBlob, "recording.webm");
+                formData.append("audio_file", audioBlob, "recording.wav");
                 formData.append("expected_text", expectedSentence);
 
                 const response = await fetch("/api/v1/assess", {
@@ -216,9 +245,62 @@ document.addEventListener('alpine:init', () => {
                 alert(`Failed: ${error.message}`);
                 this.transitionTo(AppState.IDLE, "Error occurred. Try again.", "x-circle");
             } finally {
-                this.mediaRecorder = null;
+                this.audioRecorder = null;
                 this.audioChunks = [];
             }
+        },
+
+        /**
+         * Convert Float32Array audio chunks to WAV blob.
+         * 
+         * @param {Float32Array[]} chunks - Array of audio sample chunks
+         * @param {number} sampleRate - Sample rate (e.g., 16000)
+         * @returns {Blob} WAV audio blob
+         */
+        exportWAV(chunks, sampleRate) {
+            // Merge all chunks into single Float32Array
+            const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+            const samples = new Float32Array(totalLength);
+            let offset = 0;
+            for (const chunk of chunks) {
+                samples.set(chunk, offset);
+                offset += chunk.length;
+            }
+
+            // Convert Float32 to Int16
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            // WAV header
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + samples.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); // fmt chunk size
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, 1, true); // mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); // byte rate
+            view.setUint16(32, 2, true); // block align
+            view.setUint16(34, 16, true); // bits per sample
+            writeString(36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+
+            // Write PCM samples
+            let index = 44;
+            for (let i = 0; i < samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(index, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+                index += 2;
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
         },
 
         /**

@@ -226,9 +226,23 @@ class AssessmentService:
 
         except ValidationError as e:
             logfire.error("Invalid Gemini response", error=str(e))
+            print(f"\n{'='*80}")
+            print("VALIDATION ERROR:")
+            print(f"{'='*80}")
+            print(f"Error: {e}")
+            print(f"Validation errors: {e.errors()}")
+            print(f"{'='*80}\n")
             raise InvalidAssessmentResponseError(f"Invalid Gemini response: {e}") from e
         except Exception as e:
             logfire.error("Gemini analysis failed", error=str(e))
+            print(f"\n{'='*80}")
+            print("GEMINI ANALYSIS EXCEPTION:")
+            print(f"{'='*80}")
+            print(f"Error type: {type(e).__name__}")
+            print(f"Error message: {str(e)}")
+            import traceback
+            print(f"Traceback:\n{traceback.format_exc()}")
+            print(f"{'='*80}\n")
             raise InvalidAssessmentResponseError(f"Gemini analysis failed: {e}") from e
 
     def _parse_gemini_response(
