@@ -216,6 +216,14 @@ class AssessmentService:
                 feedback_items=len(result.word_level_feedback),
             )
 
+            # Log full Gemini response for debugging
+            import json
+            print("\n" + "="*80)
+            print("GEMINI RESPONSE JSON:")
+            print("="*80)
+            print(json.dumps(result.model_dump(), indent=2))
+            print("="*80 + "\n")
+
             return result
 
         except ValidationError as e:

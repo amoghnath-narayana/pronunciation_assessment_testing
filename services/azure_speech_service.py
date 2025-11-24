@@ -83,13 +83,26 @@ async def assess_pronunciation_async(
     Raises:
         AudioProcessingError: If audio/text is empty, or Azure SDK fails
     """
+    logfire.info(
+        "Step 2.1: Azure Speech SDK input validation",
+        audio_bytes_present=bool(audio_bytes),
+        audio_bytes_size=len(audio_bytes) if audio_bytes else 0,
+        reference_text_present=bool(reference_text),
+        reference_text=reference_text if reference_text else "EMPTY",
+        speech_key_present=bool(config.speech_key),
+        speech_region=config.speech_region,
+        speech_language=config.speech_language_code,
+    )
+
     if not audio_bytes:
+        logfire.error("Audio bytes are empty or None")
         raise AudioProcessingError("audio_bytes cannot be empty")
     if not reference_text or not reference_text.strip():
+        logfire.error("Reference text is empty or None", reference_text=reference_text)
         raise AudioProcessingError("reference_text cannot be empty")
 
     logfire.info(
-        "Step 2.2: Azure Speech SDK call",
+        "Step 2.2: Azure Speech SDK call starting",
         audio_bytes=len(audio_bytes),
         text=reference_text[:50],
     )
@@ -179,15 +192,22 @@ async def assess_pronunciation_async(
         # Always log the full Azure response for debugging
         nbest_list = result.get("NBest", [])
         nbest_displays = [nb.get("Display", "") for nb in nbest_list] if nbest_list else []
-        
+
+        # Log full response as JSON string for visibility
         logfire.info(
             "Azure full response",
             recognition_status=status,
             display_text=result.get("DisplayText", ""),
             nbest_count=len(nbest_list),
             nbest_displays=nbest_displays,
-            full_response=result
         )
+
+        # Use print to avoid logfire format issues with JSON
+        print("\n" + "="*80)
+        print("AZURE RESPONSE JSON:")
+        print("="*80)
+        print(json.dumps(result, indent=2))
+        print("="*80 + "\n")
         
         if status == "Success" and result.get("NBest"):
             scores = result["NBest"][0].get("PronunciationAssessment", {})
@@ -222,7 +242,19 @@ async def assess_pronunciation_async(
         return result
 
     except Exception as e:
-        logfire.error("Azure SDK error", error=str(e))
+        logfire.error(
+            "Azure SDK error - FULL DETAILS",
+            error=str(e),
+            error_type=type(e).__name__,
+            audio_size=len(audio_bytes) if audio_bytes else 0,
+            reference_text=reference_text,
+            speech_language=config.speech_language_code,
+            speech_region=config.speech_region,
+            traceback=str(e.__traceback__),
+        )
+        # Log full exception with traceback
+        import traceback
+        logfire.error("Full exception traceback:\n" + traceback.format_exc())
         raise AudioProcessingError(f"Azure SDK failed: {e}") from e
 
 

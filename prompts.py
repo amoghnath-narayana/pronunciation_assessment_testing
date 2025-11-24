@@ -1,6 +1,7 @@
 """Prompts for Gemini analysis of Azure pronunciation results."""
 
 import json
+import logfire
 
 # System prompt - concise and role-focused per Gemini best practices
 AZURE_ANALYSIS_SYSTEM_PROMPT = """You are a pronunciation assessment assistant.
@@ -23,10 +24,9 @@ def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
 
     Follows Gemini prompting best practices:
     - Provides complete context (full Azure JSON response)
-    - Clear structure with XML delimiters
-    - Few-shot examples demonstrating expected behavior
-    - Direct, concise instructions
-    - Output prefix strategy for JSON generation
+    - Clear structure with explicit instructions
+    - Step-by-step guidance for structured output
+    - Direct, concise language
 
     This approach lets Gemini handle all the analysis logic including:
     - Word substitution detection
@@ -34,22 +34,13 @@ def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
     - Accent variation handling
     - Feedback generation
     """
-    import logfire
-
     # Extract basic info for logging and context
     nbest = azure_result.get("NBest", [{}])[0]
     recognized_text = nbest.get("Display", "").strip()
     scores = nbest.get("PronunciationAssessment", {})
 
-    logfire.info(
-        "Building Gemini prompt with full Azure response",
-        reference_text=reference_text,
-        recognized_text=recognized_text,
-        pron_score=scores.get("PronScore", 0),
-        azure_response_size_bytes=len(json.dumps(azure_result)),
-    )
-
-    return f"""Analyze this pronunciation assessment for a child (age 5-7) learning English.
+    # Build the prompt
+    prompt = f"""Analyze this pronunciation assessment for a child (age 5-7) learning English.
 
 EXPECTED TEXT: "{reference_text}"
 RECOGNIZED TEXT: "{recognized_text}"
@@ -106,5 +97,24 @@ RULES:
 - Use encouraging, child-friendly language
 - Convert IPA phonemes to simple descriptions: ð/θ→th, æ→a, ɪ→i, ɛ→e, ə→uh, ɔ→o, etc."""
 
+    # Log prompt info
+    logfire.info(
+        "Building Gemini prompt with full Azure response",
+        reference_text=reference_text,
+        recognized_text=recognized_text,
+        pron_score=scores.get("PronScore", 0),
+        azure_response_size_bytes=len(json.dumps(azure_result)),
+        prompt_length=len(prompt),
+    )
 
+    # Log the full prompt for debugging (use print to avoid logfire format issues with JSON)
+    print("\n" + "="*80)
+    print("FULL GEMINI PROMPT:")
+    print("="*80)
+    if len(prompt) > 3000:
+        print(prompt[:3000] + "\n...[TRUNCATED - Full length: " + str(len(prompt)) + " chars]...")
+    else:
+        print(prompt)
+    print("="*80 + "\n")
 
+    return prompt
