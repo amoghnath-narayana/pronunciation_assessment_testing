@@ -30,9 +30,9 @@ class WordFeedback(BaseModel):
     suggestion: str = Field(
         description="Child-friendly tip on how to make the correct sound"
     )
-    severity: Literal["critical", "minor"] = Field(
+    severity: Literal["critical", "major", "minor"] = Field(
         default="minor",
-        description="Severity level: 'critical' for wrong words, 'minor' for pronunciation issues"
+        description="Severity level: 'critical' for wrong words, 'major' for serious pronunciation issues (score < 30), 'minor' for mild issues (score 30-50)"
     )
 
 
@@ -48,7 +48,7 @@ class AzureAnalysisResult(BaseModel):
     )
     word_level_feedback: list[WordFeedback] = Field(
         default_factory=list,
-        description="List of specific feedback items (maximum 1 item, empty if perfect)"
+        description="List of all problematic words with specific feedback (empty if perfect)"
     )
 
 
@@ -83,7 +83,7 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                         "expected_sound": {"type": "string"},
                         "actual_sound": {"type": "string"},
                         "suggestion": {"type": "string"},
-                        "severity": {"type": "string", "enum": ["critical", "minor"]},
+                        "severity": {"type": "string", "enum": ["critical", "major", "minor"]},
                     },
                     "required": [
                         "word",

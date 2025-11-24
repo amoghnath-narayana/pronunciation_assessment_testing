@@ -6,17 +6,15 @@ import logfire
 from models.assessment_models import AzureRecognitionResult
 
 # System prompt - concise and role-focused per Gemini best practices
-AZURE_ANALYSIS_SYSTEM_PROMPT = """You are a pronunciation assessment assistant.
+AZURE_ANALYSIS_SYSTEM_PROMPT = """You are a pronunciation assessment assistant for children aged 5-7 learning English.
 
-Your job is to:
-1. Extract information from Azure Speech API JSON data
-2. Identify the most critical issue (if any): wrong words first, then pronunciation errors
-3. Provide one piece of encouraging feedback for children aged 5-7 learning English
+Extract Azure Speech API data and provide encouraging feedback.
 
-Important:
-- Word substitutions (wrong word spoken) are CRITICAL priority
-- Accept Indian English accent variations as correct
-- Only flag clear pronunciation errors (AccuracyScore < 50)
+Rules:
+- List ALL problem words (wrong words first, then pronunciation errors)
+- Wrong words = severity "critical"
+- Pronunciation errors: "major" if score < 30, "minor" if 30-50
+- Accept Indian English variations (th→t/d, v/w, r-coloring)
 - Use simple, child-friendly language"""
 
 
@@ -40,63 +38,51 @@ def build_azure_analysis_prompt(azure_response: AzureRecognitionResult, referenc
     recognized_text = azure_dict.get("NBest", [{}])[0].get("Display", "").strip()
     scores = azure_response.pronunciation_scores
 
-    # Build the prompt
-    prompt = f"""Analyze this pronunciation assessment for a child (age 5-7) learning English.
+    # Build the prompt - simplified for better Gemini reliability
+    prompt = f"""Analyze pronunciation assessment for a child (age 5-7).
 
-EXPECTED TEXT: "{reference_text}"
-RECOGNIZED TEXT: "{recognized_text}"
+Expected: "{reference_text}"
+Recognized: "{recognized_text}"
 
-AZURE SPEECH ASSESSMENT DATA:
+Azure Data:
 {json.dumps(azure_dict, indent=2)}
 
-YOUR TASK:
-Extract the assessment information from the Azure data above and provide feedback.
+Instructions:
 
-STEP 1 - Extract Overall Scores:
-- Get scores from NBest[0].PronunciationAssessment
-- Set overall_scores.pronunciation = PronScore
-- Set overall_scores.accuracy = AccuracyScore
-- Set overall_scores.fluency = FluencyScore
-- Set overall_scores.completeness = CompletenessScore
+1. EXTRACT SCORES from NBest[0].PronunciationAssessment:
+   - pronunciation = PronScore
+   - accuracy = AccuracyScore  
+   - fluency = FluencyScore
+   - completeness = CompletenessScore
 
-STEP 2 - Check for Word Substitutions (HIGHEST PRIORITY):
-- Split expected text "{reference_text}" into words
-- Compare with NBest[0].Words[].Word to find mismatches
-- Example: If expected "cat" but Azure shows Word="bat", this is a substitution
-- Check ErrorType field for "Substitution" or "Omission"
-- If ANY substitution found: Add ONE feedback item with severity="critical"
-  - word = what they said (wrong word)
-  - letter = the wrong word
-  - expected_sound = correct word
-  - actual_sound = what they said
-  - suggestion = "You said '[wrong]' but the word is '[correct]'"
+2. FIND ALL PROBLEM WORDS:
+   
+   A. Check for wrong words (CRITICAL):
+      - Compare expected "{reference_text}" with Words[].Word
+      - If word doesn't match or ErrorType is "Substitution"/"Omission":
+        * severity = "critical"
+        * word = what they said
+        * expected_sound = correct word
+        * actual_sound = what they said
+        * suggestion = "You said '[wrong]' but the word is '[correct]'"
+   
+   B. Check pronunciation (words with AccuracyScore < 50):
+      - Skip Indian English variations (th→t/d, v/w confusion, r-coloring)
+      - For each problem word:
+        * severity = "major" if AccuracyScore < 30, else "minor"
+        * word = the word
+        * letter = problematic letter(s)
+        * expected_sound = simple phoneme (æ→"a", ɪ→"i", ð→"th")
+        * actual_sound = what they said (from NBestPhonemes[0])
+        * suggestion = child-friendly tip
 
-STEP 3 - Check Pronunciation (ONLY if no substitutions):
-- Look through Words[].Phonemes[] for any with AccuracyScore < 50
-- Use NBestPhonemes[0].Phoneme to see what sound they actually made
-- SKIP these (Indian English variations, acceptable):
-  - θ or ð pronounced as 't' or 'd' (th sounds)
-  - Retroflex sounds
-  - 'v'/'w' confusion
-  - 'r' coloring
-- If problematic phoneme found: Add ONE feedback item with severity="minor"
-  - word = the word containing the issue
-  - letter = the letter(s) for that phoneme
-  - expected_sound = convert IPA to simple (ð→"th", æ→"a", ɪ→"i", etc)
-  - actual_sound = convert actual phoneme to simple
-  - suggestion = child-friendly tip
+3. CREATE SUMMARY:
+   - Perfect: "Wonderful! You said it perfectly!"
+   - Good (>80): "Great job! Your pronunciation is excellent."
+   - Multiple issues: "Good try! Let's practice a few words together."
+   - One issue: "Great job! Let's work on one sound."
 
-STEP 4 - Create Summary:
-- If perfect (no issues): "Wonderful! You said it perfectly!"
-- If good (scores >80): "Great job! Your pronunciation is excellent."
-- If substitution: "Good try! Let's practice the right word."
-- If pronunciation issue: "Great job! Let's work on one sound."
-
-RULES:
-- Maximum 1 feedback item (or empty list if perfect)
-- Substitutions always take priority over pronunciation
-- Use encouraging, child-friendly language
-- Convert IPA phonemes to simple descriptions: ð/θ→th, æ→a, ɪ→i, ɛ→e, ə→uh, ɔ→o, etc."""
+Return ALL problem words in word_level_feedback array."""
 
     # Log prompt info
     logfire.info(

@@ -31,6 +31,7 @@ from models.assessment_models import (
     AzureAnalysisResult,
     AzureRecognitionResult,
     OverallScores,
+    get_azure_analysis_response_schema,
 )
 from prompts import (
     AZURE_ANALYSIS_SYSTEM_PROMPT,
@@ -171,17 +172,37 @@ class AssessmentService:
                     temperature=self.config.assessment_temperature,
                     max_output_tokens=self.config.assessment_max_output_tokens,
                     response_mime_type="application/json",
-                    response_schema=AzureAnalysisResult,
+                    response_schema=get_azure_analysis_response_schema(),
                     thinking_config=types.ThinkingConfig(thinking_level="low"),
                 ),
             )
 
             # Log raw response for debugging
             parsed_raw = getattr(response, "parsed", None)
+            response_text = getattr(response, "text", None)
+            
+            # Print full response details for debugging
+            print("\n" + "="*80)
+            print("GEMINI RAW RESPONSE DEBUG:")
+            print("="*80)
+            print(f"Has parsed: {parsed_raw is not None}")
+            print(f"Parsed type: {type(parsed_raw)}")
+            print(f"Parsed value: {parsed_raw}")
+            print(f"Response text: {response_text}")
+            print(f"Response type: {type(response)}")
+            print(f"Candidates: {response.candidates}")
+            if response.candidates:
+                print(f"First candidate: {response.candidates[0]}")
+                print(f"First candidate content: {response.candidates[0].content}")
+                print(f"First candidate parts: {response.candidates[0].content.parts}")
+            print(f"Prompt feedback: {response.prompt_feedback}")
+            print("="*80 + "\n")
+            
             logfire.debug(
                 "Gemini raw response received",
                 has_parsed=parsed_raw is not None,
                 parsed_preview=str(parsed_raw)[:500] if parsed_raw else None,
+                response_text_preview=response_text[:200] if response_text else None,
             )
 
             result = self._parse_gemini_response(response)
@@ -231,12 +252,10 @@ class AssessmentService:
         parsed_data = getattr(response, "parsed", None)
 
         if parsed_data is None:
-            # Safe text extraction (handle None case)
-            response_text = getattr(response, "text", None) or ""
             logfire.error(
                 "Gemini returned no structured output",
                 model=self.config.model_name,
-                response_text_preview=response_text[:200],
+                has_candidates=bool(response.candidates),
             )
             raise InvalidAssessmentResponseError("Gemini returned no structured output")
 
