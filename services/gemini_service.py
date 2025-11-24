@@ -229,7 +229,7 @@ class AssessmentService:
             raise InvalidAssessmentResponseError(f"Invalid Gemini response: {e}") from e
         except Exception as e:
             logfire.error("Gemini analysis failed", error=str(e))
-            raise
+            raise InvalidAssessmentResponseError(f"Gemini analysis failed: {e}") from e
 
     def _parse_gemini_response(
         self, response: types.GenerateContentResponse

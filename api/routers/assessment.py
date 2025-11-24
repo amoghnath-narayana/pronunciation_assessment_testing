@@ -14,16 +14,12 @@ Optimization Notes:
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends
+from fastapi import APIRouter, File, Form, UploadFile, Depends
 import logfire
 
 from models.api_models import AssessmentResponse, ErrorResponse
 from config import AppConfig
-from exceptions import (
-    AssessmentError,
-    AudioProcessingError,
-    InvalidAssessmentResponseError,
-)
+from exceptions import AudioProcessingError
 from services.gemini_service import AssessmentService
 
 router = APIRouter(prefix="/api/v1", tags=["assessment"])
@@ -81,42 +77,22 @@ async def assess_pronunciation(
     Returns:
         AssessmentResponse: Scores and feedback
     """
-    try:
-        audio_data = await audio_file.read()
+    audio_data = await audio_file.read()
 
-        if not audio_data:
-            raise HTTPException(status_code=400, detail="Empty audio file")
+    if not audio_data:
+        raise AudioProcessingError("Empty audio file")
 
-        logfire.info(
-            "Assessment request",
-            text=expected_text[:50],
-            audio_bytes=len(audio_data),
-        )
+    logfire.info(
+        "Assessment request",
+        text=expected_text[:50],
+        audio_bytes=len(audio_data),
+    )
 
-        # Azure assessment + Gemini analysis
-        result = await service.assess_pronunciation_async(audio_data, expected_text)
+    # Azure assessment + Gemini analysis
+    result = await service.assess_pronunciation_async(audio_data, expected_text)
 
-        logfire.info(
-            "Assessment complete", pron_score=result.overall_scores.pronunciation
-        )
+    logfire.info(
+        "Assessment complete", pron_score=result.overall_scores.pronunciation
+    )
 
-        # Return response
-        return AssessmentResponse.from_analysis_result(result)
-
-    except AssessmentError as e:
-        # Handle all assessment errors (includes AudioProcessingError, InvalidAssessmentResponseError)
-        status_code = 400 if e.error_type == "audio_processing" else 500
-        logfire.error(
-            f"Assessment error ({e.error_type})",
-            error=str(e),
-            error_message=e.message,
-            error_details=e.details,
-        )
-        raise HTTPException(
-            status_code=status_code, detail=f"{e.message}: {e.details}"
-        ) from e
-    except Exception as e:
-        logfire.exception("Unexpected error in assessment", error=str(e), exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Internal server error: {str(e)}"
-        ) from e
+    return AssessmentResponse.from_analysis_result(result)

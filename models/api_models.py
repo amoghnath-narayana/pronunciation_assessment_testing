@@ -33,7 +33,9 @@ class AssessmentResponse(BaseModel):
     Used by: POST /api/v1/assess
     """
 
-    summary_text: str = Field(description="Encouraging summary for the learner")
+    summary_text: str = Field(
+        description="Encouraging summary for the learner"
+    )
     overall_scores: OverallScores = Field(
         description="Azure pronunciation scores (0-100)"
     )

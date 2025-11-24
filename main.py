@@ -43,9 +43,17 @@ app.add_middleware(
 @app.exception_handler(AssessmentError)
 async def assessment_error_handler(request: Request, exc: AssessmentError):
     """Handle custom assessment errors."""
-    logfire.exception(f"Assessment error: {exc.message}", details=exc.details)
+    status_code = 400 if exc.error_type == "audio_processing" else 500
+    
+    logfire.error(
+        f"Assessment error ({exc.error_type})",
+        error=str(exc),
+        message=exc.message,
+        details=exc.details,
+    )
+    
     return JSONResponse(
-        status_code=500,
+        status_code=status_code,
         content={
             "error": exc.__class__.__name__,
             "message": exc.message,

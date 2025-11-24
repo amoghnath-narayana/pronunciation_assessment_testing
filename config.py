@@ -25,6 +25,6 @@ class AppConfig(BaseSettings):
     # Gemini API Settings (for analysis only)   
     gemini_api_key: str
     model_name: str
-    assessment_temperature: float = 0.3
+    assessment_temperature: float = 0.6
     # Higher default because thinking models can consume tokens before producing output
     assessment_max_output_tokens: int = 10000
