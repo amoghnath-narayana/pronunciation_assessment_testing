@@ -104,12 +104,6 @@ async def assess_pronunciation_async(
         pronunciation_config.enable_miscue = True
         pronunciation_config.enable_prosody_assessment = True
 
-        # Create push stream for audio
-        # Note: We write all audio at once (not chunked streaming). For short pre-recorded clips,
-        # chunked streaming provides no latency benefit because the bottleneck is network upload
-        # to Azure (~100-500ms) + Azure's pronunciation processing (~500-2000ms), not the local
-        # stream writing time (~1-10ms). Chunked streaming only helps for real-time or long audio.
-        push_stream = speechsdk.audio.PushAudioInputStream()
         audio_config = speechsdk.audio.AudioConfig(stream=push_stream)
 
         # Create recognizer
