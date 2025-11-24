@@ -8,10 +8,16 @@ from pydantic import BaseModel, Field
 class OverallScores(BaseModel):
     """Overall pronunciation scores from Azure (prosody removed for young learners)."""
 
-    pronunciation: float = Field(default=0.0, description="Overall pronunciation score (0-100)")
-    accuracy: float = Field(default=0.0, description="Accuracy score for individual sounds (0-100)")
+    pronunciation: float = Field(
+        default=0.0, description="Overall pronunciation score (0-100)"
+    )
+    accuracy: float = Field(
+        default=0.0, description="Accuracy score for individual sounds (0-100)"
+    )
     fluency: float = Field(default=0.0, description="Fluency and rhythm score (0-100)")
-    completeness: float = Field(default=0.0, description="Completeness score for speaking all words (0-100)")
+    completeness: float = Field(
+        default=0.0, description="Completeness score for speaking all words (0-100)"
+    )
 
 
 class WordFeedback(BaseModel):
@@ -32,7 +38,7 @@ class WordFeedback(BaseModel):
     )
     severity: Literal["critical", "major", "minor"] = Field(
         default="minor",
-        description="Severity level: 'critical' for wrong words, 'major' for serious pronunciation issues (score < 30), 'minor' for mild issues (score 30-50)"
+        description="Severity level: 'critical' for wrong words, 'major' for serious pronunciation issues (score < 30), 'minor' for mild issues (score 30-50)",
     )
 
 
@@ -44,11 +50,11 @@ class AzureAnalysisResult(BaseModel):
     )
     overall_scores: OverallScores = Field(
         default_factory=OverallScores,
-        description="Overall pronunciation scores from Azure assessment"
+        description="Overall pronunciation scores from Azure assessment",
     )
     word_level_feedback: list[WordFeedback] = Field(
         default_factory=list,
-        description="List of all problematic words with specific feedback (empty if perfect)"
+        description="List of all problematic words with specific feedback (empty if perfect)",
     )
 
 
@@ -83,7 +89,10 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
                         "expected_sound": {"type": "string"},
                         "actual_sound": {"type": "string"},
                         "suggestion": {"type": "string"},
-                        "severity": {"type": "string", "enum": ["critical", "major", "minor"]},
+                        "severity": {
+                            "type": "string",
+                            "enum": ["critical", "major", "minor"],
+                        },
                     },
                     "required": [
                         "word",
@@ -108,17 +117,26 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
 class AzureOverallScores(BaseModel):
     """Overall pronunciation scores from NBest[0].PronunciationAssessment."""
 
-    AccuracyScore: float = Field(default=0.0, description="Pronunciation accuracy (0-100)")
+    AccuracyScore: float = Field(
+        default=0.0, description="Pronunciation accuracy (0-100)"
+    )
     FluencyScore: float = Field(default=0.0, description="Speech fluency (0-100)")
-    CompletenessScore: float = Field(default=0.0, description="Completeness of speech (0-100)")
-    PronScore: float = Field(default=0.0, description="Overall pronunciation score (0-100)")
+    CompletenessScore: float = Field(
+        default=0.0, description="Completeness of speech (0-100)"
+    )
+    PronScore: float = Field(
+        default=0.0, description="Overall pronunciation score (0-100)"
+    )
 
 
 class AzureWordScores(BaseModel):
     """Word-level pronunciation scores from Words[].PronunciationAssessment."""
 
     AccuracyScore: float = Field(default=0.0, description="Word accuracy score (0-100)")
-    ErrorType: str = Field(default="None", description="Error type: None, Omission, Insertion, Mispronunciation")
+    ErrorType: str = Field(
+        default="None",
+        description="Error type: None, Omission, Insertion, Mispronunciation",
+    )
 
 
 class AzureWordAssessment(BaseModel):
@@ -129,8 +147,7 @@ class AzureWordAssessment(BaseModel):
     Duration: int = Field(description="Duration in ticks")
     Confidence: float = Field(default=0.0, description="Confidence score")
     PronunciationAssessment: AzureWordScores = Field(
-        default_factory=AzureWordScores,
-        description="Word-level pronunciation scores"
+        default_factory=AzureWordScores, description="Word-level pronunciation scores"
     )
 
     class Config:
@@ -141,13 +158,13 @@ class AzureWordAssessment(BaseModel):
 class AzureRecognitionResult(BaseModel):
     """Complete Azure Speech Service recognition result."""
 
-    RecognitionStatus: Literal["Success", "NoMatch", "InitialSilenceTimeout", "BabbleTimeout", "Error"] = Field(
-        description="Recognition status"
-    )
+    RecognitionStatus: Literal[
+        "Success", "NoMatch", "InitialSilenceTimeout", "BabbleTimeout", "Error"
+    ] = Field(description="Recognition status")
     DisplayText: str = Field(default="", description="Recognized text")
     NBest: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="N-best recognition results with scores and words"
+        description="N-best recognition results with scores and words",
     )
 
     @property

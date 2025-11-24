@@ -101,7 +101,7 @@ class AssessmentService:
         if not azure_response.is_successful:
             logfire.warn(
                 "Azure recognition unsuccessful",
-                status=azure_response.RecognitionStatus
+                status=azure_response.RecognitionStatus,
             )
             return AzureAnalysisResult(
                 summary_text="I couldn't hear you clearly. Please try again!",
@@ -127,11 +127,14 @@ class AssessmentService:
             accuracy=scores.AccuracyScore,
             fluency=scores.FluencyScore,
             completeness=scores.CompletenessScore,
-            word_count=len(words)
+            word_count=len(words),
         )
 
         # Check for all-zero scores (unexpected)
-        if all(s in (0, None) for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]):
+        if all(
+            s in (0, None)
+            for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]
+        ):
             logfire.warn("Azure returned all-zero scores")
             return AzureAnalysisResult(
                 summary_text="I couldn't hear you clearly. Please try again!",
@@ -180,11 +183,11 @@ class AssessmentService:
             # Log raw response for debugging
             parsed_raw = getattr(response, "parsed", None)
             response_text = getattr(response, "text", None)
-            
+
             # Print full response details for debugging
-            print("\n" + "="*80)
+            print("\n" + "=" * 80)
             print("GEMINI RAW RESPONSE DEBUG:")
-            print("="*80)
+            print("=" * 80)
             print(f"Has parsed: {parsed_raw is not None}")
             print(f"Parsed type: {type(parsed_raw)}")
             print(f"Parsed value: {parsed_raw}")
@@ -196,8 +199,8 @@ class AssessmentService:
                 print(f"First candidate content: {response.candidates[0].content}")
                 print(f"First candidate parts: {response.candidates[0].content.parts}")
             print(f"Prompt feedback: {response.prompt_feedback}")
-            print("="*80 + "\n")
-            
+            print("=" * 80 + "\n")
+
             logfire.debug(
                 "Gemini raw response received",
                 has_parsed=parsed_raw is not None,
@@ -216,33 +219,35 @@ class AssessmentService:
 
             # Log full Gemini response for debugging
             import json
-            print("\n" + "="*80)
+
+            print("\n" + "=" * 80)
             print("GEMINI RESPONSE JSON:")
-            print("="*80)
+            print("=" * 80)
             print(json.dumps(result.model_dump(), indent=2))
-            print("="*80 + "\n")
+            print("=" * 80 + "\n")
 
             return result
 
         except ValidationError as e:
             logfire.error("Invalid Gemini response", error=str(e))
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("VALIDATION ERROR:")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             print(f"Error: {e}")
             print(f"Validation errors: {e.errors()}")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
             raise InvalidAssessmentResponseError(f"Invalid Gemini response: {e}") from e
         except Exception as e:
             logfire.error("Gemini analysis failed", error=str(e))
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("GEMINI ANALYSIS EXCEPTION:")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             print(f"Error type: {type(e).__name__}")
             print(f"Error message: {str(e)}")
             import traceback
+
             print(f"Traceback:\n{traceback.format_exc()}")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
             raise InvalidAssessmentResponseError(f"Gemini analysis failed: {e}") from e
 
     def _parse_gemini_response(
@@ -290,5 +295,3 @@ class AssessmentService:
             raise InvalidAssessmentResponseError(
                 f"Invalid Gemini response structure: {e.errors()}"
             ) from e
-
-

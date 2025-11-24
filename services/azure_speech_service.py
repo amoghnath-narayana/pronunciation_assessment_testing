@@ -21,11 +21,9 @@ import asyncio
 import json
 import string
 import difflib
-import io
 
 import azure.cognitiveservices.speech as speechsdk
 import logfire
-from pydub import AudioSegment
 
 from config import AppConfig
 from exceptions import AudioProcessingError
@@ -105,7 +103,7 @@ async def assess_pronunciation_async(
         )
         pronunciation_config.enable_miscue = True
         pronunciation_config.enable_prosody_assessment = True
-        
+
         # Create push stream for audio
         # Note: We write all audio at once (not chunked streaming). For short pre-recorded clips,
         # chunked streaming provides no latency benefit because the bottleneck is network upload
@@ -162,23 +160,33 @@ async def assess_pronunciation_async(
 
             # Store raw JSON responses to preserve phoneme data
             raw_json_responses = []
-            
+
             def recognized(evt: speechsdk.SpeechRecognitionEventArgs):
                 """Callback for recognized speech events."""
-                nonlocal recognized_words, fluency_scores, prosody_scores, durations, all_recognized_texts, raw_json_responses
+                nonlocal \
+                    recognized_words, \
+                    fluency_scores, \
+                    prosody_scores, \
+                    durations, \
+                    all_recognized_texts, \
+                    raw_json_responses
 
                 print(f"RECOGNIZED: {evt.result.text}")
                 logfire.info("Recognition event", text=evt.result.text)
                 all_recognized_texts.append(evt.result.text)
 
                 # Get pronunciation assessment result
-                pronunciation_result = speechsdk.PronunciationAssessmentResult(evt.result)
+                pronunciation_result = speechsdk.PronunciationAssessmentResult(
+                    evt.result
+                )
 
-                print(f"    Accuracy: {pronunciation_result.accuracy_score}, "
-                      f"Pronunciation: {pronunciation_result.pronunciation_score}, "
-                      f"Completeness: {pronunciation_result.completeness_score}, "
-                      f"Fluency: {pronunciation_result.fluency_score}, "
-                      f"Prosody: {pronunciation_result.prosody_score}")
+                print(
+                    f"    Accuracy: {pronunciation_result.accuracy_score}, "
+                    f"Pronunciation: {pronunciation_result.pronunciation_score}, "
+                    f"Completeness: {pronunciation_result.completeness_score}, "
+                    f"Fluency: {pronunciation_result.fluency_score}, "
+                    f"Prosody: {pronunciation_result.prosody_score}"
+                )
 
                 logfire.info(
                     "Pronunciation scores for segment",
@@ -186,7 +194,7 @@ async def assess_pronunciation_async(
                     pronunciation=pronunciation_result.pronunciation_score,
                     completeness=pronunciation_result.completeness_score,
                     fluency=pronunciation_result.fluency_score,
-                    prosody=pronunciation_result.prosody_score
+                    prosody=pronunciation_result.prosody_score,
                 )
 
                 # Collect words with their scores (handle None values)
@@ -197,27 +205,35 @@ async def assess_pronunciation_async(
                     prosody_scores.append(pronunciation_result.prosody_score)
 
                 # Extract duration and raw JSON response (with phoneme data)
-                json_result = evt.result.properties.get(speechsdk.PropertyId.SpeechServiceResponse_JsonResult)
+                json_result = evt.result.properties.get(
+                    speechsdk.PropertyId.SpeechServiceResponse_JsonResult
+                )
                 jo = json.loads(json_result)
-                
+
                 # Store raw JSON to preserve phoneme data
                 raw_json_responses.append(jo)
-                
+
                 # Print full JSON for debugging
                 print("Full JSON Response:")
                 print(json.dumps(jo, indent=2))
-                
-                if 'NBest' in jo and len(jo['NBest']) > 0:
-                    nb = jo['NBest'][0]
-                    if 'Words' in nb:
-                        segment_duration = sum([int(w.get('Duration', 0)) for w in nb['Words']])
+
+                if "NBest" in jo and len(jo["NBest"]) > 0:
+                    nb = jo["NBest"][0]
+                    if "Words" in nb:
+                        segment_duration = sum(
+                            [int(w.get("Duration", 0)) for w in nb["Words"]]
+                        )
                         durations.append(segment_duration)
 
             # Connect callbacks (matching Azure sample pattern)
             recognizer.recognizing.connect(recognizing)
             recognizer.recognized.connect(recognized)
-            recognizer.session_started.connect(lambda evt: print(f"SESSION STARTED: {evt}"))
-            recognizer.session_stopped.connect(lambda evt: print(f"SESSION STOPPED: {evt}"))
+            recognizer.session_started.connect(
+                lambda evt: print(f"SESSION STARTED: {evt}")
+            )
+            recognizer.session_stopped.connect(
+                lambda evt: print(f"SESSION STOPPED: {evt}")
+            )
             recognizer.session_stopped.connect(stop_cb)
             recognizer.canceled.connect(lambda evt: print(f"CANCELED: {evt}"))
             recognizer.canceled.connect(canceled_cb)
@@ -229,6 +245,7 @@ async def assess_pronunciation_async(
 
             # Wait for completion (with timeout)
             import time
+
             timeout_seconds = 30
             elapsed = 0
             while not done and elapsed < timeout_seconds:
@@ -240,7 +257,9 @@ async def assess_pronunciation_async(
             recognizer.stop_continuous_recognition()
 
             if recognition_error:
-                raise AudioProcessingError(f"Azure recognition failed: {recognition_error}")
+                raise AudioProcessingError(
+                    f"Azure recognition failed: {recognition_error}"
+                )
 
             if not recognized_words:
                 logfire.warning("Azure: No speech recognized in continuous mode")
@@ -252,17 +271,21 @@ async def assess_pronunciation_async(
                 word_count=len(recognized_words),
                 fluency_scores=fluency_scores,
                 prosody_scores=prosody_scores,
-                durations=durations
+                durations=durations,
             )
 
             # Process reference text for comparison
             language = config.speech_language_code
-            if language.startswith('zh'):
+            if language.startswith("zh"):
                 # Chinese text processing would go here
                 # For now, use simple split
-                reference_words = [w.strip(string.punctuation) for w in reference_text.lower().split()]
+                reference_words = [
+                    w.strip(string.punctuation) for w in reference_text.lower().split()
+                ]
             else:
-                reference_words = [w.strip(string.punctuation) for w in reference_text.lower().split()]
+                reference_words = [
+                    w.strip(string.punctuation) for w in reference_text.lower().split()
+                ]
 
             # Use difflib to match recognized words with reference text for better miscue detection
             # Convert SDK word objects to dicts for consistent handling
@@ -270,46 +293,54 @@ async def assess_pronunciation_async(
 
             if pronunciation_config.enable_miscue:
                 diff = difflib.SequenceMatcher(
-                    None,
-                    reference_words,
-                    [w.word.lower() for w in recognized_words]
+                    None, reference_words, [w.word.lower() for w in recognized_words]
                 )
 
                 for tag, i1, i2, j1, j2 in diff.get_opcodes():
-                    if tag in ['insert', 'replace']:
+                    if tag in ["insert", "replace"]:
                         # Mark insertions
                         for word in recognized_words[j1:j2]:
-                            error_type = 'Insertion' if word.error_type == 'None' else word.error_type
-                            final_words.append({
-                                'word': word.word,
-                                'accuracy_score': word.accuracy_score,
-                                'error_type': error_type
-                            })
+                            error_type = (
+                                "Insertion"
+                                if word.error_type == "None"
+                                else word.error_type
+                            )
+                            final_words.append(
+                                {
+                                    "word": word.word,
+                                    "accuracy_score": word.accuracy_score,
+                                    "error_type": error_type,
+                                }
+                            )
 
-                    if tag in ['delete', 'replace']:
+                    if tag in ["delete", "replace"]:
                         # Mark omissions
                         for word_text in reference_words[i1:i2]:
-                            final_words.append({
-                                'word': word_text,
-                                'accuracy_score': 0,
-                                'error_type': 'Omission'
-                            })
+                            final_words.append(
+                                {
+                                    "word": word_text,
+                                    "accuracy_score": 0,
+                                    "error_type": "Omission",
+                                }
+                            )
 
-                    if tag == 'equal':
+                    if tag == "equal":
                         # Add matched words
                         for word in recognized_words[j1:j2]:
-                            final_words.append({
-                                'word': word.word,
-                                'accuracy_score': word.accuracy_score,
-                                'error_type': word.error_type
-                            })
+                            final_words.append(
+                                {
+                                    "word": word.word,
+                                    "accuracy_score": word.accuracy_score,
+                                    "error_type": word.error_type,
+                                }
+                            )
             else:
                 # No miscue detection - just convert SDK objects to dicts
                 final_words = [
                     {
-                        'word': w.word,
-                        'accuracy_score': w.accuracy_score,
-                        'error_type': w.error_type
+                        "word": w.word,
+                        "accuracy_score": w.accuracy_score,
+                        "error_type": w.error_type,
                     }
                     for w in recognized_words
                 ]
@@ -318,61 +349,80 @@ async def assess_pronunciation_async(
             # Accuracy: average of non-insertion words
             final_accuracy_scores = []
             for word in final_words:
-                if word['error_type'] != 'Insertion' and word['accuracy_score'] is not None:
-                    final_accuracy_scores.append(word['accuracy_score'])
+                if (
+                    word["error_type"] != "Insertion"
+                    and word["accuracy_score"] is not None
+                ):
+                    final_accuracy_scores.append(word["accuracy_score"])
 
-            accuracy_score = sum(final_accuracy_scores) / len(final_accuracy_scores) if final_accuracy_scores else 0
+            accuracy_score = (
+                sum(final_accuracy_scores) / len(final_accuracy_scores)
+                if final_accuracy_scores
+                else 0
+            )
 
             # Fluency: duration-weighted average
             if durations and fluency_scores and len(durations) == len(fluency_scores):
                 # Filter out None values
-                valid_pairs = [(f, d) for f, d in zip(fluency_scores, durations) if f is not None and d is not None]
+                valid_pairs = [
+                    (f, d)
+                    for f, d in zip(fluency_scores, durations)
+                    if f is not None and d is not None
+                ]
                 if valid_pairs:
-                    fluency_score = sum([x * y for (x, y) in valid_pairs]) / sum([y for (x, y) in valid_pairs])
+                    fluency_score = sum([x * y for (x, y) in valid_pairs]) / sum(
+                        [y for (x, y) in valid_pairs]
+                    )
                 else:
                     fluency_score = 0
             elif fluency_scores:
                 valid_fluency = [f for f in fluency_scores if f is not None]
-                fluency_score = sum(valid_fluency) / len(valid_fluency) if valid_fluency else 0
+                fluency_score = (
+                    sum(valid_fluency) / len(valid_fluency) if valid_fluency else 0
+                )
             else:
                 fluency_score = 0
 
             # Completeness: percentage of reference words spoken correctly
             # Count correct words from recognized_words (SDK objects, not final_words)
             correct_words = len([w for w in recognized_words if w.error_type == "None"])
-            completeness_score = (correct_words / len(reference_words) * 100) if reference_words else 0
+            completeness_score = (
+                (correct_words / len(reference_words) * 100) if reference_words else 0
+            )
             completeness_score = min(completeness_score, 100)  # Cap at 100
 
             # Prosody: simple average (filter None values)
             valid_prosody = [p for p in prosody_scores if p is not None]
-            prosody_score = sum(valid_prosody) / len(valid_prosody) if valid_prosody else 0
+            prosody_score = (
+                sum(valid_prosody) / len(valid_prosody) if valid_prosody else 0
+            )
 
             # Overall pronunciation score (weighted average)
             # If prosody is 0/None, redistribute its weight to other scores
             if prosody_score == 0 or prosody_score is None:
                 pron_score = (
-                    accuracy_score * 0.5 +
-                    fluency_score * 0.25 +
-                    completeness_score * 0.25
+                    accuracy_score * 0.5
+                    + fluency_score * 0.25
+                    + completeness_score * 0.25
                 )
                 logfire.info("Prosody unavailable, using adjusted weighting")
             else:
                 pron_score = (
-                    accuracy_score * 0.4 +
-                    prosody_score * 0.2 +
-                    fluency_score * 0.2 +
-                    completeness_score * 0.2
+                    accuracy_score * 0.4
+                    + prosody_score * 0.2
+                    + fluency_score * 0.2
+                    + completeness_score * 0.2
                 )
 
-            print(f"\n{'='*80}")
+            print(f"\n{'=' * 80}")
             print("FINAL PARAGRAPH SCORES:")
-            print(f"{'='*80}")
+            print(f"{'=' * 80}")
             print(f"    Pronunciation Score: {pron_score:.2f}")
             print(f"    Accuracy Score: {accuracy_score:.2f}")
             print(f"    Completeness Score: {completeness_score:.2f}")
             print(f"    Fluency Score: {fluency_score:.2f}")
             print(f"    Prosody Score: {prosody_score:.2f}")
-            print(f"{'='*80}\n")
+            print(f"{'=' * 80}\n")
 
             logfire.info(
                 "Final calculated scores",
@@ -380,52 +430,54 @@ async def assess_pronunciation_async(
                 accuracy_score=accuracy_score,
                 completeness_score=completeness_score,
                 fluency_score=fluency_score,
-                prosody_score=prosody_score
+                prosody_score=prosody_score,
             )
 
             # Build response in Azure format
             display_text = " ".join(all_recognized_texts)
 
             # Print word-level details (matching Azure sample)
-            print(f"\nWORD-LEVEL DETAILS:")
-            print(f"{'='*80}")
+            print("\nWORD-LEVEL DETAILS:")
+            print(f"{'=' * 80}")
             for idx, word in enumerate(final_words):
-                print(f"    {idx + 1}: word: {word['word']}\t"
-                      f"accuracy score: {word['accuracy_score']:.2f}\t"
-                      f"error type: {word['error_type']}")
-            print(f"{'='*80}\n")
+                print(
+                    f"    {idx + 1}: word: {word['word']}\t"
+                    f"accuracy score: {word['accuracy_score']:.2f}\t"
+                    f"error type: {word['error_type']}"
+                )
+            print(f"{'=' * 80}\n")
 
             # Create NBest structure - preserve phoneme data from raw JSON responses
             # Build a map of words to their full phoneme data from raw JSON
             word_phoneme_map = {}
             for json_resp in raw_json_responses:
-                if 'NBest' in json_resp and len(json_resp['NBest']) > 0:
-                    words_with_phonemes = json_resp['NBest'][0].get('Words', [])
+                if "NBest" in json_resp and len(json_resp["NBest"]) > 0:
+                    words_with_phonemes = json_resp["NBest"][0].get("Words", [])
                     for w in words_with_phonemes:
-                        word_text = w.get('Word', '').lower()
+                        word_text = w.get("Word", "").lower()
                         # Store the full word data including Phonemes and Syllables
                         word_phoneme_map[word_text] = w
-            
+
             words_json = []
             for word in final_words:
                 word_dict = {
-                    "Word": word['word'],
+                    "Word": word["word"],
                     "Offset": 0,  # We don't have precise offsets in continuous mode
                     "Duration": 0,
                     "PronunciationAssessment": {
-                        "AccuracyScore": word['accuracy_score'],
-                        "ErrorType": word['error_type']
-                    }
+                        "AccuracyScore": word["accuracy_score"],
+                        "ErrorType": word["error_type"],
+                    },
                 }
-                
+
                 # Add phoneme and syllable data from raw JSON if available
-                raw_word_data = word_phoneme_map.get(word['word'].lower())
+                raw_word_data = word_phoneme_map.get(word["word"].lower())
                 if raw_word_data:
-                    if 'Phonemes' in raw_word_data:
-                        word_dict['Phonemes'] = raw_word_data['Phonemes']
-                    if 'Syllables' in raw_word_data:
-                        word_dict['Syllables'] = raw_word_data['Syllables']
-                
+                    if "Phonemes" in raw_word_data:
+                        word_dict["Phonemes"] = raw_word_data["Phonemes"]
+                    if "Syllables" in raw_word_data:
+                        word_dict["Syllables"] = raw_word_data["Syllables"]
+
                 words_json.append(word_dict)
 
             raw_json_response = {
@@ -443,11 +495,11 @@ async def assess_pronunciation_async(
                             "FluencyScore": fluency_score,
                             "CompletenessScore": completeness_score,
                             "PronScore": pron_score,
-                            "ProsodyScore": prosody_score
+                            "ProsodyScore": prosody_score,
                         },
-                        "Words": words_json
+                        "Words": words_json,
                     }
-                ]
+                ],
             }
 
             return raw_json_response
@@ -466,11 +518,11 @@ async def assess_pronunciation_async(
         )
 
         # Print full JSON for debugging (avoid logfire formatting issues)
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("AZURE RESPONSE JSON:")
-        print("="*80)
+        print("=" * 80)
         print(json.dumps(azure_response_dict, indent=2))
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         # Log detailed scores if successful
         if azure_response.is_successful:
@@ -481,7 +533,7 @@ async def assess_pronunciation_async(
                 {
                     "word": w.Word,
                     "accuracy": w.PronunciationAssessment.AccuracyScore,
-                    "error_type": w.PronunciationAssessment.ErrorType
+                    "error_type": w.PronunciationAssessment.ErrorType,
                 }
                 for w in words
             ]
@@ -493,16 +545,19 @@ async def assess_pronunciation_async(
                 fluency=scores.FluencyScore if scores else 0,
                 completeness=scores.CompletenessScore if scores else 0,
                 word_count=len(words),
-                words=word_summaries
+                words=word_summaries,
             )
 
             # Warn if scores are all zero (unexpected)
-            if scores and all(s in (0, None) for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]):
+            if scores and all(
+                s in (0, None)
+                for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]
+            ):
                 logfire.warn("Azure returned zero scores (unexpected)")
         else:
             logfire.warning(
                 "Azure recognition unsuccessful",
-                status=azure_response.RecognitionStatus
+                status=azure_response.RecognitionStatus,
             )
 
         return azure_response
@@ -520,8 +575,6 @@ async def assess_pronunciation_async(
         )
         # Log full exception with traceback
         import traceback
+
         logfire.error("Full exception traceback:\n" + traceback.format_exc())
         raise AudioProcessingError(f"Azure SDK failed: {e}") from e
-
-
-

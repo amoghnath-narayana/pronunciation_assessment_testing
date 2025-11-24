@@ -33,9 +33,7 @@ class AssessmentResponse(BaseModel):
     Used by: POST /api/v1/assess
     """
 
-    summary_text: str = Field(
-        description="Encouraging summary for the learner"
-    )
+    summary_text: str = Field(description="Encouraging summary for the learner")
     overall_scores: OverallScores = Field(
         description="Azure pronunciation scores (0-100)"
     )
@@ -44,9 +42,7 @@ class AssessmentResponse(BaseModel):
     )
 
     @classmethod
-    def from_analysis_result(
-        cls, result: AzureAnalysisResult
-    ) -> "AssessmentResponse":
+    def from_analysis_result(cls, result: AzureAnalysisResult) -> "AssessmentResponse":
         """Create from AzureAnalysisResult using Pydantic's model_validate."""
         return cls(
             summary_text=result.summary_text,

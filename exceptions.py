@@ -3,7 +3,7 @@
 
 class AssessmentError(Exception):
     """Base exception for all assessment-related errors.
-    
+
     Attributes:
         message: Human-readable error message
         details: Optional dictionary with additional error context

@@ -22,7 +22,7 @@ class AppConfig(BaseSettings):
     # The Gemini analysis is configured to be lenient with Indian English accents.
     speech_language_code: str = "en-US"
 
-    # Gemini API Settings (for analysis only)   
+    # Gemini API Settings (for analysis only)
     gemini_api_key: str
     model_name: str
     assessment_temperature: float = 0.6

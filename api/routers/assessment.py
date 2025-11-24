@@ -91,8 +91,6 @@ async def assess_pronunciation(
     # Azure assessment + Gemini analysis
     result = await service.assess_pronunciation_async(audio_data, expected_text)
 
-    logfire.info(
-        "Assessment complete", pron_score=result.overall_scores.pronunciation
-    )
+    logfire.info("Assessment complete", pron_score=result.overall_scores.pronunciation)
 
     return AssessmentResponse.from_analysis_result(result)

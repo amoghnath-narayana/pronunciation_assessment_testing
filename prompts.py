@@ -19,7 +19,9 @@ Rules:
 - Use simple, child-friendly language"""
 
 
-def build_azure_analysis_prompt(azure_response: AzureRecognitionResult, reference_text: str) -> str:
+def build_azure_analysis_prompt(
+    azure_response: AzureRecognitionResult, reference_text: str
+) -> str:
     """
     Build prompt for Gemini with full Azure response data.
 
@@ -120,13 +122,18 @@ Return ALL mistakes in word_level_feedback array."""
     )
 
     # Log the full prompt for debugging (use print to avoid logfire format issues with JSON)
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("FULL GEMINI PROMPT:")
-    print("="*80)
+    print("=" * 80)
     if len(prompt) > 3000:
-        print(prompt[:3000] + "\n...[TRUNCATED - Full length: " + str(len(prompt)) + " chars]...")
+        print(
+            prompt[:3000]
+            + "\n...[TRUNCATED - Full length: "
+            + str(len(prompt))
+            + " chars]..."
+        )
     else:
         print(prompt)
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     return prompt
