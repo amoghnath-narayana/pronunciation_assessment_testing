@@ -175,22 +175,49 @@ async def assess_pronunciation_async(
 
         # [2.5] Log results
         status = result.get("RecognitionStatus", "Unknown")
+        
+        # Always log the full Azure response for debugging
+        nbest_list = result.get("NBest", [])
+        nbest_displays = [nb.get("Display", "") for nb in nbest_list] if nbest_list else []
+        
+        logfire.info(
+            "Azure full response",
+            recognition_status=status,
+            display_text=result.get("DisplayText", ""),
+            nbest_count=len(nbest_list),
+            nbest_displays=nbest_displays,
+            full_response=result
+        )
+        
         if status == "Success" and result.get("NBest"):
             scores = result["NBest"][0].get("PronunciationAssessment", {})
+            words = result["NBest"][0].get("Words", [])
+            
+            # Log word-by-word details
+            word_details = []
+            for w in words:
+                word_details.append({
+                    "word": w.get("Word"),
+                    "accuracy": w.get("PronunciationAssessment", {}).get("AccuracyScore"),
+                    "error_type": w.get("PronunciationAssessment", {}).get("ErrorType")
+                })
+            
             logfire.info(
                 "Step 2.5: Azure SDK complete",
                 pron=scores.get("PronScore"),
                 acc=scores.get("AccuracyScore"),
                 flu=scores.get("FluencyScore"),
+                word_count=len(words),
+                words=word_details
             )
+            
             if not scores or all(v in (0, None) for v in scores.values()):
                 logfire.warn(
                     "Azure returned zero/empty scores",
                     raw_result_preview=str(result)[:500],
                 )
-                logfire.debug("Azure full result", raw_result=result)
         else:
-            logfire.warning("Azure non-success", status=status)
+            logfire.warning("Azure non-success", status=status, full_result=result)
 
         return result
 

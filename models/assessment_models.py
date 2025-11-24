@@ -8,16 +8,16 @@ from pydantic import BaseModel, Field
 class OverallScores(BaseModel):
     """Overall pronunciation scores from Azure (prosody removed for young learners)."""
 
-    pronunciation: float = 0.0
-    accuracy: float = 0.0
-    fluency: float = 0.0
-    completeness: float = 0.0
+    pronunciation: float = Field(default=0.0, description="Overall pronunciation score (0-100)")
+    accuracy: float = Field(default=0.0, description="Accuracy score for individual sounds (0-100)")
+    fluency: float = Field(default=0.0, description="Fluency and rhythm score (0-100)")
+    completeness: float = Field(default=0.0, description="Completeness score for speaking all words (0-100)")
 
 
 class WordFeedback(BaseModel):
     """Word-level feedback with specific phoneme information."""
 
-    word: str
+    word: str = Field(description="The word that has the pronunciation issue")
     letter: str = Field(
         description="The exact letter(s) in the word that need work (e.g., 'th', 'r', 'e')"
     )
@@ -30,15 +30,26 @@ class WordFeedback(BaseModel):
     suggestion: str = Field(
         description="Child-friendly tip on how to make the correct sound"
     )
-    severity: Literal["critical", "minor"] = "minor"
+    severity: Literal["critical", "minor"] = Field(
+        default="minor",
+        description="Severity level: 'critical' for wrong words, 'minor' for pronunciation issues"
+    )
 
 
 class AzureAnalysisResult(BaseModel):
     """Result from Gemini analysis of Azure pronunciation assessment."""
 
-    summary_text: str = Field(description="Encouraging summary for the learner")
-    overall_scores: OverallScores = Field(default_factory=OverallScores)
-    word_level_feedback: list[WordFeedback] = Field(default_factory=list)
+    summary_text: str = Field(
+        description="Encouraging summary message for the learner (child-friendly, positive tone)"
+    )
+    overall_scores: OverallScores = Field(
+        default_factory=OverallScores,
+        description="Overall pronunciation scores from Azure assessment"
+    )
+    word_level_feedback: list[WordFeedback] = Field(
+        default_factory=list,
+        description="List of specific feedback items (maximum 1 item, empty if perfect)"
+    )
 
 
 def get_azure_analysis_response_schema() -> dict[str, Any]:
