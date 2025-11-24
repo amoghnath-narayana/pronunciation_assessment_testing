@@ -1,6 +1,6 @@
 """Pydantic models for pronunciation assessment results."""
 
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -98,3 +98,79 @@ def get_azure_analysis_response_schema() -> dict[str, Any]:
         },
         "required": ["summary_text", "overall_scores", "word_level_feedback"],
     }
+
+
+# ============================================================================
+# Azure Speech Service Response Models
+# ============================================================================
+
+
+class AzureOverallScores(BaseModel):
+    """Overall pronunciation scores from NBest[0].PronunciationAssessment."""
+
+    AccuracyScore: float = Field(default=0.0, description="Pronunciation accuracy (0-100)")
+    FluencyScore: float = Field(default=0.0, description="Speech fluency (0-100)")
+    CompletenessScore: float = Field(default=0.0, description="Completeness of speech (0-100)")
+    PronScore: float = Field(default=0.0, description="Overall pronunciation score (0-100)")
+
+
+class AzureWordScores(BaseModel):
+    """Word-level pronunciation scores from Words[].PronunciationAssessment."""
+
+    AccuracyScore: float = Field(default=0.0, description="Word accuracy score (0-100)")
+    ErrorType: str = Field(default="None", description="Error type: None, Omission, Insertion, Mispronunciation")
+
+
+class AzureWordAssessment(BaseModel):
+    """Word-level assessment from Azure Speech Service."""
+
+    Word: str = Field(description="The recognized word")
+    Offset: int = Field(description="Offset in ticks")
+    Duration: int = Field(description="Duration in ticks")
+    Confidence: float = Field(default=0.0, description="Confidence score")
+    PronunciationAssessment: AzureWordScores = Field(
+        default_factory=AzureWordScores,
+        description="Word-level pronunciation scores"
+    )
+
+    class Config:
+        # Allow extra fields like Phonemes, Syllables, Grapheme that we don't explicitly model
+        extra = "allow"
+
+
+class AzureRecognitionResult(BaseModel):
+    """Complete Azure Speech Service recognition result."""
+
+    RecognitionStatus: Literal["Success", "NoMatch", "InitialSilenceTimeout", "BabbleTimeout", "Error"] = Field(
+        description="Recognition status"
+    )
+    DisplayText: str = Field(default="", description="Recognized text")
+    NBest: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="N-best recognition results with scores and words"
+    )
+
+    @property
+    def is_successful(self) -> bool:
+        """Check if recognition was successful."""
+        return self.RecognitionStatus == "Success" and len(self.NBest) > 0
+
+    @property
+    def pronunciation_scores(self) -> Optional[AzureOverallScores]:
+        """Get overall pronunciation scores from NBest[0].PronunciationAssessment."""
+        if not self.is_successful:
+            return None
+        scores_dict = self.NBest[0].get("PronunciationAssessment", {})
+        return AzureOverallScores(**scores_dict) if scores_dict else None
+
+    @property
+    def words(self) -> list[AzureWordAssessment]:
+        """Get word-level assessments from best result."""
+        if not self.is_successful:
+            return []
+        words_list = self.NBest[0].get("Words", [])
+        return [AzureWordAssessment(**word) for word in words_list]
+
+    class Config:
+        # Allow extra fields from Azure response
+        extra = "allow"

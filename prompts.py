@@ -3,6 +3,8 @@
 import json
 import logfire
 
+from models.assessment_models import AzureRecognitionResult
+
 # System prompt - concise and role-focused per Gemini best practices
 AZURE_ANALYSIS_SYSTEM_PROMPT = """You are a pronunciation assessment assistant.
 
@@ -18,26 +20,25 @@ Important:
 - Use simple, child-friendly language"""
 
 
-def build_azure_analysis_prompt(azure_result: dict, reference_text: str) -> str:
+def build_azure_analysis_prompt(azure_response: AzureRecognitionResult, reference_text: str) -> str:
     """
     Build prompt for Gemini with full Azure response data.
 
-    Follows Gemini prompting best practices:
-    - Provides complete context (full Azure JSON response)
-    - Clear structure with explicit instructions
-    - Step-by-step guidance for structured output
-    - Direct, concise language
+    Accepts Pydantic model for type safety, converts to dict for JSON serialization.
 
-    This approach lets Gemini handle all the analysis logic including:
-    - Word substitution detection
-    - Phoneme analysis
-    - Accent variation handling
-    - Feedback generation
+    Args:
+        azure_response: Validated Azure recognition result
+        reference_text: Expected text for comparison
+
+    Returns:
+        Structured prompt with Azure data and analysis instructions
     """
-    # Extract basic info for logging and context
-    nbest = azure_result.get("NBest", [{}])[0]
-    recognized_text = nbest.get("Display", "").strip()
-    scores = nbest.get("PronunciationAssessment", {})
+    # Convert Pydantic model to dict for JSON serialization
+    azure_dict = azure_response.model_dump()
+
+    # Extract info for logging (using Pydantic properties for type safety)
+    recognized_text = azure_dict.get("NBest", [{}])[0].get("Display", "").strip()
+    scores = azure_response.pronunciation_scores
 
     # Build the prompt
     prompt = f"""Analyze this pronunciation assessment for a child (age 5-7) learning English.
@@ -46,7 +47,7 @@ EXPECTED TEXT: "{reference_text}"
 RECOGNIZED TEXT: "{recognized_text}"
 
 AZURE SPEECH ASSESSMENT DATA:
-{json.dumps(azure_result, indent=2)}
+{json.dumps(azure_dict, indent=2)}
 
 YOUR TASK:
 Extract the assessment information from the Azure data above and provide feedback.
@@ -99,11 +100,11 @@ RULES:
 
     # Log prompt info
     logfire.info(
-        "Building Gemini prompt with full Azure response",
+        "Building Gemini prompt",
         reference_text=reference_text,
         recognized_text=recognized_text,
-        pron_score=scores.get("PronScore", 0),
-        azure_response_size_bytes=len(json.dumps(azure_result)),
+        pron_score=scores.PronScore if scores else 0,
+        azure_response_size_bytes=len(json.dumps(azure_dict)),
         prompt_length=len(prompt),
     )
 

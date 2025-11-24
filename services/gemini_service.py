@@ -1,22 +1,20 @@
 """
-Pronunciation Assessment Service - Main orchestrator for the assessment pipeline.
+Pronunciation Assessment Service - Main orchestrator.
 
-This service coordinates the complete pronunciation assessment workflow:
-    [1] Receives audio bytes and expected text from API endpoint
-    [2] Calls Azure Speech SDK for pronunciation scoring (async)
-    [3] Sends Azure results to Gemini for learner-friendly analysis and word-level feedback
+Coordinates the assessment pipeline:
+    [1] Validate inputs (audio + text)
+    [2] Get pronunciation data from Azure Speech SDK (AzureRecognitionResult)
+    [3] Send to Gemini for learner-friendly feedback (AzureAnalysisResult)
 
 Architecture:
-    - Singleton pattern: One instance per app lifetime, initialized at startup
-    - Async throughout: Azure SDK calls run non-blocking
+    - Singleton pattern (one instance per app lifetime)
+    - Async throughout (non-blocking Azure SDK calls)
+    - Pydantic models for type safety and validation
 
-Key Methods:
-    - assess_pronunciation_async(): Main pipeline (steps 1-3)
-    - _analyze_with_gemini(): Sends Azure results to Gemini for structured analysis
-    - _parse_gemini_response(): Validates and parses Gemini's structured output
-
-Performance Optimizations:
-    - Async Azure Speech SDK calls (non-blocking I/O)
+Methods:
+    - assess_pronunciation_async(): Main pipeline
+    - _analyze_with_gemini(): Convert Azure data to friendly feedback via Gemini
+    - _parse_gemini_response(): Validate Gemini's structured output
 """
 
 from dataclasses import dataclass
@@ -31,6 +29,7 @@ from config import AppConfig
 from exceptions import AudioProcessingError, InvalidAssessmentResponseError
 from models.assessment_models import (
     AzureAnalysisResult,
+    AzureRecognitionResult,
     OverallScores,
 )
 from prompts import (
@@ -63,30 +62,24 @@ class AssessmentService:
         expected_sentence_text: str,
     ) -> AzureAnalysisResult:
         """
-        Main assessment pipeline: Azure Speech → Gemini Analysis.
+        Main assessment pipeline: Azure Speech SDK → Gemini Analysis.
 
         Flow:
-            [1] Validate inputs (audio bytes and reference text)
-            [2] Call Azure Speech SDK for pronunciation assessment (async)
-                - Returns RecognitionStatus, pronunciation scores, word-level data
-                - Handles recognition failures (NoMatch, errors)
-            [3] Extract Azure scores from response
-                - PronScore, AccuracyScore, FluencyScore, CompletenessScore, ProsodyScore
-                - Returns early with friendly message if recognition failed or scores are zero
-            [4] Send Azure results to Gemini for learner-friendly analysis
-                - Gemini generates summary_text, word_level_feedback, prosody_feedback
-                - Uses structured output (JSON schema validation)
+            [1] Validate inputs
+            [2] Get pronunciation data from Azure (returns AzureRecognitionResult)
+            [3] Check if recognition successful and scores are valid
+            [4] Send Azure data to Gemini for learner-friendly feedback
 
         Args:
-            audio_data_bytes: Raw audio bytes (WAV/WebM format)
-            expected_sentence_text: Reference sentence for pronunciation comparison
+            audio_data_bytes: Raw audio (WAV/WebM)
+            expected_sentence_text: Reference text for comparison
 
         Returns:
-            AzureAnalysisResult: Contains summary_text, overall_scores, word_level_feedback, prosody_feedback
+            AzureAnalysisResult: Friendly feedback with scores and word-level suggestions
 
         Raises:
-            AudioProcessingError: If audio/text is empty or Azure SDK fails
-            InvalidAssessmentResponseError: If Gemini returns invalid structured output
+            AudioProcessingError: Empty audio/text or Azure failure
+            InvalidAssessmentResponseError: Invalid Gemini response
         """
         # [1] Validate
         if not audio_data_bytes:
@@ -94,97 +87,81 @@ class AssessmentService:
         if not expected_sentence_text or not expected_sentence_text.strip():
             raise AudioProcessingError("Reference text is empty")
 
-        logfire.info("Step 1: Starting assessment", audio_bytes=len(audio_data_bytes))
+        logfire.info("Assessment pipeline started", audio_bytes=len(audio_data_bytes))
 
-        # [2] Azure pronunciation assessment (async)
-        azure_result = await assess_pronunciation_async(
+        # [2] Get pronunciation data from Azure
+        azure_response = await assess_pronunciation_async(
             audio_bytes=audio_data_bytes,
             reference_text=expected_sentence_text,
             config=self.config,
         )
 
-        # Handle recognition failure
-        recognition_status = azure_result.get("RecognitionStatus", "Unknown")
-        display_text = azure_result.get("NBest", [{}])[0].get("Display", "") or ""
-        logfire.info(
-            f"Azure returned recognition | status={recognition_status} | display='{display_text[:120]}'"
-        )
-        if recognition_status != "Success":
-            logfire.warn("Azure recognition failed", status=recognition_status)
-            return AzureAnalysisResult(
-                summary_text="I couldn't hear you clearly. Please try again!",
-                overall_scores=OverallScores(),
-                word_level_feedback=[],
-                prosody_feedback=None,
-            )
-
-        # Extract Azure scores
-        nbest = azure_result.get("NBest", [{}])[0]
-        azure_scores = nbest.get("PronunciationAssessment", {})
-        pron_score = azure_scores.get("PronScore", 0)
-
-        accuracy = azure_scores.get("AccuracyScore", 0)
-        fluency = azure_scores.get("FluencyScore", 0)
-        completeness = azure_scores.get("CompletenessScore", 0)
-        word_count = len(nbest.get("Words", []))
-
-        logfire.info(
-            (
-                f"Step 2 complete: Azure scores | pron={pron_score:.2f} "
-                f"acc={accuracy:.2f} flu={fluency:.2f} comp={completeness:.2f} "
-                f"words={word_count}"
-            )
-        )
-
-        # If Azure returned zeros (no evidence of scoring), don't send junk to Gemini
-        non_zero_scores = [
-            s for s in [pron_score, accuracy, fluency, completeness] if s
-        ]
-        if not non_zero_scores:
+        # [3] Handle unsuccessful recognition
+        if not azure_response.is_successful:
             logfire.warn(
-                "Azure returned zero scores; treating as inaudible or assessment failure",
-                display=display_text[:120],
-                words=word_count,
+                "Azure recognition unsuccessful",
+                status=azure_response.RecognitionStatus
             )
             return AzureAnalysisResult(
                 summary_text="I couldn't hear you clearly. Please try again!",
                 overall_scores=OverallScores(),
                 word_level_feedback=[],
-                prosody_feedback=None,
             )
 
-        # [3] Call Gemini for learner-friendly feedback (always, to get word-level analysis)
-        logfire.info("Step 3: Sending to Gemini for analysis")
-        return self._analyze_with_gemini(azure_result, expected_sentence_text)
+        # Extract scores using Pydantic model properties
+        scores = azure_response.pronunciation_scores
+        words = azure_response.words
+
+        if not scores:
+            logfire.warn("Azure returned no pronunciation scores")
+            return AzureAnalysisResult(
+                summary_text="I couldn't hear you clearly. Please try again!",
+                overall_scores=OverallScores(),
+                word_level_feedback=[],
+            )
+
+        logfire.info(
+            "Azure scores received",
+            pronunciation=scores.PronScore,
+            accuracy=scores.AccuracyScore,
+            fluency=scores.FluencyScore,
+            completeness=scores.CompletenessScore,
+            word_count=len(words)
+        )
+
+        # Check for all-zero scores (unexpected)
+        if all(s in (0, None) for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]):
+            logfire.warn("Azure returned all-zero scores")
+            return AzureAnalysisResult(
+                summary_text="I couldn't hear you clearly. Please try again!",
+                overall_scores=OverallScores(),
+                word_level_feedback=[],
+            )
+
+        # [4] Send to Gemini for learner-friendly analysis
+        logfire.info("Sending to Gemini for analysis")
+        return self._analyze_with_gemini(azure_response, expected_sentence_text)
 
     def _analyze_with_gemini(
-        self, azure_result: dict, reference_text: str
+        self, azure_response: AzureRecognitionResult, reference_text: str
     ) -> AzureAnalysisResult:
         """
-        Send Azure pronunciation results to Gemini for learner-friendly analysis.
+        Send Azure results to Gemini for learner-friendly feedback.
 
-        This method takes raw Azure Speech API results and sends them to Gemini
-        for conversion into learner-friendly feedback with word-level suggestions.
-
-        Flow:
-            [1] Build prompt from Azure results and reference text
-            [2] Call Gemini with structured output (response_schema=AzureAnalysisResult)
-            [3] Parse and validate Gemini's structured response
-            [4] Return validated AzureAnalysisResult
+        Uses Gemini's structured output with Pydantic schema validation.
 
         Args:
-            azure_result: Raw Azure Speech API response (dict with NBest, Words, scores)
-            reference_text: Original reference sentence
+            azure_response: Validated Azure recognition result (Pydantic model)
+            reference_text: Expected text
 
         Returns:
-            AzureAnalysisResult: Validated structured output from Gemini
+            AzureAnalysisResult: Learner-friendly feedback with word-level suggestions
 
         Raises:
-            InvalidAssessmentResponseError: If Gemini returns invalid/missing structured output
-            ValidationError: If Gemini's response doesn't match AzureAnalysisResult schema
+            InvalidAssessmentResponseError: Invalid/missing Gemini response
         """
         try:
-            prompt = build_azure_analysis_prompt(azure_result, reference_text)
+            prompt = build_azure_analysis_prompt(azure_response, reference_text)
 
             response = self.client.models.generate_content(
                 model=self.config.model_name,
@@ -239,11 +216,8 @@ class AssessmentService:
         """
         Extract and validate Gemini's structured output.
 
-        When response_schema is provided to Gemini, the client returns the structured
-        object in response.parsed (no manual JSON parsing needed). This method:
-            [1] Extracts response.parsed
-            [2] Validates it matches AzureAnalysisResult schema
-            [3] Logs detailed error info if parsing fails
+        With response_schema, Gemini SDK handles parsing automatically via response.parsed.
+        Pydantic validates the structure - we just need to extract and validate.
 
         Args:
             response: Gemini API response with structured output
@@ -252,98 +226,36 @@ class AssessmentService:
             AzureAnalysisResult: Validated assessment result
 
         Raises:
-            InvalidAssessmentResponseError: If response.parsed is None or invalid
-            ValidationError: If parsed data doesn't match AzureAnalysisResult schema
+            InvalidAssessmentResponseError: If response.parsed is missing or invalid
         """
-        parsed = getattr(response, "parsed", None)
-        text_preview = (getattr(response, "text", None) or "")[:300]
-        candidates = getattr(response, "candidates", None) or []
-        candidate_texts: list[str] = []
-        candidate_details: list[dict] = []
-        for cand in candidates:
-            if not getattr(cand, "content", None):
-                candidate_details.append(
-                    {
-                        "has_content": False,
-                        "finish_reason": getattr(cand, "finish_reason", None),
-                        "safety": getattr(cand, "safety_ratings", None),
-                    }
-                )
-                continue
+        parsed_data = getattr(response, "parsed", None)
 
-            parts = cand.content.parts or []
-            parts_info = []
-            for part in parts:
-                parts_info.append(
-                    {
-                        "text": bool(getattr(part, "text", None)),
-                        "function_call": bool(getattr(part, "function_call", None)),
-                        "function_response": bool(
-                            getattr(part, "function_response", None)
-                        ),
-                        "inline_data": bool(getattr(part, "inline_data", None)),
-                    }
-                )
-                if part and getattr(part, "text", None):
-                    candidate_texts.append(part.text[:200])
-
-            candidate_details.append(
-                {
-                    "finish_reason": getattr(cand, "finish_reason", None),
-                    "safety": getattr(cand, "safety_ratings", None),
-                    "parts": parts_info,
-                }
-            )
-
-        usage = getattr(response, "usage_metadata", None)
-        prompt_tokens = (
-            getattr(usage, "prompt_token_count", None) if usage is not None else None
-        )
-        candidate_tokens = (
-            getattr(usage, "candidates_token_count", None)
-            if usage is not None
-            else None
-        )
-        finish_reasons = [getattr(c, "finish_reason", None) for c in candidates]
-
-        if parsed is None:
+        if parsed_data is None:
+            # Safe text extraction (handle None case)
+            response_text = getattr(response, "text", None) or ""
             logfire.error(
                 "Gemini returned no structured output",
                 model=self.config.model_name,
-                text_preview=text_preview,
-                candidate_count=len(candidates),
-                candidate_texts=candidate_texts,
-                candidate_details=candidate_details,
-                finish_reasons=finish_reasons,
-                prompt_tokens=prompt_tokens,
-                candidate_tokens=candidate_tokens,
+                response_text_preview=response_text[:200],
             )
-            logfire.debug("Gemini raw response", response_repr=repr(response))
             raise InvalidAssessmentResponseError("Gemini returned no structured output")
 
-        if hasattr(parsed, "model_dump"):
-            parsed = parsed.model_dump()
+        # Convert to dict if it's a Pydantic model
+        if hasattr(parsed_data, "model_dump"):
+            parsed_data = parsed_data.model_dump()
 
+        # Validate with Pydantic
         try:
-            return AzureAnalysisResult.model_validate(parsed)
+            return AzureAnalysisResult.model_validate(parsed_data)
         except ValidationError as e:
             logfire.error(
-                "Invalid Gemini structured output - validation failed",
+                "Gemini response validation failed",
                 error=str(e),
                 validation_errors=e.errors(),
-                parsed_data=parsed,
-                model=self.config.model_name,
-                text_preview=text_preview,
-                candidate_count=len(candidates),
-                candidate_texts=candidate_texts,
-                candidate_details=candidate_details,
-                finish_reasons=finish_reasons,
-                prompt_tokens=prompt_tokens,
-                candidate_tokens=candidate_tokens,
+                parsed_data_preview=str(parsed_data)[:500],
             )
-            logfire.debug("Full parsed data from Gemini", parsed_data_full=parsed)
             raise InvalidAssessmentResponseError(
-                f"Invalid Gemini structured output: {e.errors()}"
+                f"Invalid Gemini response structure: {e.errors()}"
             ) from e
 
 

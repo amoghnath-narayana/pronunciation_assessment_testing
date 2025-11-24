@@ -1,87 +1,57 @@
 """
 Azure Speech SDK Pronunciation Assessment Service.
 
-This module handles communication with Azure Speech Service for pronunciation scoring.
-It's called by AssessmentService (gemini_service.py) as step 2 in the pipeline.
+Handles Azure Speech Service communication for pronunciation scoring.
+Called by AssessmentService to get raw pronunciation data from Azure.
 
 Flow:
-    [1] Receive audio bytes and reference text from AssessmentService
-    [2] Configure Azure Speech SDK with pronunciation assessment settings
-        - Grading system: HundredMark (0-100 scale)
-        - Granularity: Phoneme (detailed word-level analysis)
-        - Prosody assessment: Enabled for en-US only
-        - Miscue detection: Configurable (detects omissions, insertions, mispronunciations)
-    [3] Create push audio stream and recognizer
-    [4] Push audio data and run recognition (async via thread pool)
-    [5] Parse and return Azure response with scores and word-level data
+    [1] Configure Azure SDK with pronunciation settings (HundredMark, Phoneme granularity)
+    [2] Create push stream and write audio bytes
+    [3] Run recognition (async via thread pool, SDK is synchronous)
+    [4] Return validated AzureRecognitionResult (Pydantic model)
 
-Response Structure:
-    - RecognitionStatus: "Success", "NoMatch", or error
-    - NBest[0].PronunciationAssessment: Overall scores (PronScore, AccuracyScore, etc.)
-    - NBest[0].Words[]: Word-level scores and phoneme details
-
-Performance:
-    - Async execution: Runs in thread pool (Speech SDK is synchronous)
-    - Connection pooling: Handled internally by Speech SDK
-    - Streaming: Push stream allows efficient audio transfer
+Returns:
+    AzureRecognitionResult with:
+    - RecognitionStatus: Success/NoMatch/Error
+    - pronunciation_scores: Overall scores (accuracy, fluency, completeness)
+    - words: Word-level assessments with phoneme details
 """
 
 import asyncio
 import json
-from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
 import logfire
 
 from config import AppConfig
 from exceptions import AudioProcessingError
+from models.assessment_models import AzureRecognitionResult
 
 
 async def assess_pronunciation_async(
     audio_bytes: bytes,
     reference_text: str,
     config: AppConfig,
-) -> dict[str, Any]:
+) -> AzureRecognitionResult:
     """
-    Send audio to Azure Speech SDK for pronunciation assessment (async).
+    Assess pronunciation using Azure Speech SDK.
 
-    This function wraps the synchronous Azure Speech SDK in an async interface
-    by running recognition in a thread pool executor.
-
-    Flow:
-        [1] Validate inputs (audio bytes and reference text)
-        [2] Configure Speech SDK with subscription key and region
-        [3] Build pronunciation assessment config:
-            - Grading: HundredMark (0-100 scale)
-            - Granularity: Phoneme (word and phoneme-level details)
-            - Prosody: Enabled for en-US (rhythm/intonation scoring)
-            - Miscue: Configurable (detects omissions, insertions, mispronunciations)
-        [4] Create push audio stream and recognizer
-        [5] Apply pronunciation config to recognizer
-        [6] Run recognition in thread pool (SDK is synchronous):
-            - Push audio bytes to stream
-            - Close stream
-            - Call recognize_once()
-            - Parse JSON result
-        [7] Handle recognition results:
-            - Success: Return parsed JSON with scores and word data
-            - NoMatch: Return empty result structure
-            - Error: Raise AudioProcessingError
+    Wraps synchronous Azure SDK in async interface via thread pool.
+    Validates audio/text, configures SDK, runs recognition, returns Pydantic model.
 
     Args:
-        audio_bytes: Raw audio bytes (WAV/WebM format, SDK handles conversion)
-        reference_text: Expected sentence for pronunciation comparison
-        config: Application configuration (Speech key, region, language, settings)
+        audio_bytes: Raw audio (WAV/WebM, SDK handles format detection)
+        reference_text: Expected text for comparison
+        config: Azure credentials and language settings
 
     Returns:
-        dict: Azure Speech API response containing:
-            - RecognitionStatus: "Success", "NoMatch", or error
-            - NBest[0].PronunciationAssessment: Overall scores (PronScore, AccuracyScore, FluencyScore, etc.)
-            - NBest[0].Words[]: Word-level scores and phoneme details
-            - NBest[0].Display: Recognized text
+        AzureRecognitionResult: Validated model with:
+            - is_successful: Quick status check
+            - pronunciation_scores: Overall scores (accuracy, fluency, etc.)
+            - words: Word-level assessments with phoneme details
 
     Raises:
-        AudioProcessingError: If audio/text is empty, or Azure SDK fails
+        AudioProcessingError: Empty audio/text or Azure SDK failure
     """
     logfire.info(
         "Step 2.1: Azure Speech SDK input validation",
@@ -152,33 +122,35 @@ async def assess_pronunciation_async(
         loop = asyncio.get_event_loop()
 
         def _recognize():
-            # Push audio data
+            """Inner function to run synchronous Azure SDK recognition."""
+            # Write audio and close stream
             push_stream.write(audio_bytes)
             push_stream.close()
 
-            # Recognize once
-            result = recognizer.recognize_once()
+            # Run recognition
+            sdk_recognition_result = recognizer.recognize_once()
 
-            if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                # Parse JSON result
-                json_result = json.loads(result.json)
-                
-                # Try to get pronunciation assessment result object for NBestPhonemes
-                # This is separate from the JSON and may contain additional data
+            if sdk_recognition_result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                # Parse JSON response from Azure
+                raw_json_response = json.loads(sdk_recognition_result.json)
+
+                # Log pronunciation assessment metadata (optional additional info)
                 try:
-                    pron_result = speechsdk.PronunciationAssessmentResult(result)
-                    logfire.debug("PronunciationAssessmentResult object created", 
-                                 accuracy=pron_result.accuracy_score,
-                                 pronunciation=pron_result.pronunciation_score)
+                    pron_assessment_obj = speechsdk.PronunciationAssessmentResult(sdk_recognition_result)
+                    logfire.debug(
+                        "Pronunciation assessment metadata",
+                        accuracy=pron_assessment_obj.accuracy_score,
+                        pronunciation=pron_assessment_obj.pronunciation_score
+                    )
                 except Exception as e:
-                    logfire.debug("Could not create PronunciationAssessmentResult", error=str(e))
-                
-                return json_result
-            elif result.reason == speechsdk.ResultReason.NoMatch:
+                    logfire.debug("Pronunciation assessment object unavailable", error=str(e))
+
+                return raw_json_response
+            elif sdk_recognition_result.reason == speechsdk.ResultReason.NoMatch:
                 logfire.warning("Azure: No speech recognized")
                 return {"RecognitionStatus": "NoMatch", "DisplayText": "", "NBest": []}
             else:
-                error_details = result.cancellation_details
+                error_details = sdk_recognition_result.cancellation_details
                 logfire.error(
                     "Azure recognition failed",
                     reason=error_details.reason,
@@ -188,62 +160,60 @@ async def assess_pronunciation_async(
                     f"Azure recognition failed: {error_details.error_details}"
                 )
 
-        result = await loop.run_in_executor(None, _recognize)
+        azure_response_dict = await loop.run_in_executor(None, _recognize)
 
-        # [2.5] Log results
-        status = result.get("RecognitionStatus", "Unknown")
-        
-        # Always log the full Azure response for debugging
-        nbest_list = result.get("NBest", [])
-        nbest_displays = [nb.get("Display", "") for nb in nbest_list] if nbest_list else []
+        # Validate and convert to Pydantic model
+        azure_response = AzureRecognitionResult(**azure_response_dict)
 
-        # Log full response as JSON string for visibility
+        # Log full response for debugging
         logfire.info(
-            "Azure full response",
-            recognition_status=status,
-            display_text=result.get("DisplayText", ""),
-            nbest_count=len(nbest_list),
-            nbest_displays=nbest_displays,
+            "Azure recognition complete",
+            status=azure_response.RecognitionStatus,
+            display_text=azure_response.DisplayText,
+            is_successful=azure_response.is_successful,
         )
 
-        # Use print to avoid logfire format issues with JSON
+        # Print full JSON for debugging (avoid logfire formatting issues)
         print("\n" + "="*80)
         print("AZURE RESPONSE JSON:")
         print("="*80)
-        print(json.dumps(result, indent=2))
+        print(json.dumps(azure_response_dict, indent=2))
         print("="*80 + "\n")
-        
-        if status == "Success" and result.get("NBest"):
-            scores = result["NBest"][0].get("PronunciationAssessment", {})
-            words = result["NBest"][0].get("Words", [])
-            
-            # Log word-by-word details
-            word_details = []
-            for w in words:
-                word_details.append({
-                    "word": w.get("Word"),
-                    "accuracy": w.get("PronunciationAssessment", {}).get("AccuracyScore"),
-                    "error_type": w.get("PronunciationAssessment", {}).get("ErrorType")
-                })
-            
-            logfire.info(
-                "Step 2.5: Azure SDK complete",
-                pron=scores.get("PronScore"),
-                acc=scores.get("AccuracyScore"),
-                flu=scores.get("FluencyScore"),
-                word_count=len(words),
-                words=word_details
-            )
-            
-            if not scores or all(v in (0, None) for v in scores.values()):
-                logfire.warn(
-                    "Azure returned zero/empty scores",
-                    raw_result_preview=str(result)[:500],
-                )
-        else:
-            logfire.warning("Azure non-success", status=status, full_result=result)
 
-        return result
+        # Log detailed scores if successful
+        if azure_response.is_successful:
+            scores = azure_response.pronunciation_scores
+            words = azure_response.words
+
+            word_summaries = [
+                {
+                    "word": w.Word,
+                    "accuracy": w.PronunciationAssessment.AccuracyScore,
+                    "error_type": w.PronunciationAssessment.ErrorType
+                }
+                for w in words
+            ]
+
+            logfire.info(
+                "Azure pronunciation scores",
+                pronunciation=scores.PronScore if scores else 0,
+                accuracy=scores.AccuracyScore if scores else 0,
+                fluency=scores.FluencyScore if scores else 0,
+                completeness=scores.CompletenessScore if scores else 0,
+                word_count=len(words),
+                words=word_summaries
+            )
+
+            # Warn if scores are all zero (unexpected)
+            if scores and all(s in (0, None) for s in [scores.PronScore, scores.AccuracyScore, scores.FluencyScore]):
+                logfire.warn("Azure returned zero scores (unexpected)")
+        else:
+            logfire.warning(
+                "Azure recognition unsuccessful",
+                status=azure_response.RecognitionStatus
+            )
+
+        return azure_response
 
     except Exception as e:
         logfire.error(

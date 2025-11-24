@@ -65,5 +65,5 @@ Returns WAV audio with spoken feedback.
 
 ```bash
 python scripts/test_azure_pipeline.py --test-connection
-python scripts/test_azure_pipeline.py --audio sample.wav --text "The cat is on the mat"
+python scripts/test_azure_pipeline.py --audio sample.wav --text "The apple is red"
 ```

@@ -24,7 +24,7 @@ document.addEventListener('alpine:init', () => {
         state: AppState.IDLE,
 
         // Data
-        expectedText: "The cat is on the mat",
+        expectedText: "The apple is red",
         results: false,
         resultTitle: "",
         resultMessage: "",
